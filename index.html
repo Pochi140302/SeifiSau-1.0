@@ -56,6 +56,16 @@
   table.stats-table td{ padding:7px 10px; border-bottom:1px solid var(--line); white-space:nowrap; color:var(--ink); }
   table.stats-table tr:last-child td{ border-bottom:none; }
 
+  .field-row{ display:flex; gap:10px; }
+  .field-row .field{ flex:1; }
+  .quickrow{ display:flex; gap:6px; margin-top:12px; flex-wrap:wrap; }
+
+  .tasklist{ display:flex; flex-direction:column; gap:8px; }
+  .taskrow{ display:flex; justify-content:space-between; align-items:baseline; gap:10px;
+    background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 13px; font-size:0.85rem; }
+  .task-sow{ font-weight:600; color:var(--ink); flex:none; }
+  .task-label{ color:var(--ink-soft); text-align:right; }
+
   .panel{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; margin-bottom:18px; display:none; }
   .panel.open{ display:block; }
   .panel h2{ font-family:'Source Serif 4', serif; font-size:1.1rem; margin:0 0 14px; }
@@ -147,6 +157,7 @@
   <div class="viewtabs" id="viewTabs">
     <button class="viewtab active" data-view="sows">Sauen</button>
     <button class="viewtab" data-view="stats">Auswertung</button>
+    <button class="viewtab" data-view="plan">Arbeitsplan</button>
   </div>
 
   <div class="filterrow" id="filterRow">
@@ -181,6 +192,23 @@
 
   <div id="list"></div>
   <div id="statsView" style="display:none;"></div>
+
+  <div id="planView" style="display:none;">
+    <div class="panel open" style="margin-bottom:16px;">
+      <h2>Zeitraum wählen</h2>
+      <div class="field-row">
+        <div class="field"><label>Von</label><input type="date" id="ap-start"></div>
+        <div class="field"><label>Bis</label><input type="date" id="ap-end"></div>
+      </div>
+      <div class="quickrow" id="apQuick">
+        <button class="chip" data-days="0">Heute</button>
+        <button class="chip" data-days="7">7 Tage</button>
+        <button class="chip" data-days="14">14 Tage</button>
+        <button class="chip" data-days="30">30 Tage</button>
+      </div>
+    </div>
+    <div id="apResults"></div>
+  </div>
 </main>
 
 <div class="modal-overlay" id="modalOverlay">
@@ -204,7 +232,6 @@ const TREATMENTS = [
   { key:'iron',       label:'Eisen-Impfung',              from:3,  to:3,  counts:false },
   { key:'castration', label:'Kastration',                 from:5,  to:15, counts:true  },
   { key:'circo',      label:'Circo Maxx Impfung',          from:10, to:15, counts:false },
-  { key:'draxxin',    label:'Draxxin Impfung',             from:15, to:20, counts:false },
 ];
 
 let sows = [];
@@ -711,15 +738,20 @@ document.getElementById('viewTabs').addEventListener('click', (e)=>{
   btn.classList.add('active');
   currentView = btn.dataset.view;
   const showSows = currentView === 'sows';
+  const showStats = currentView === 'stats';
+  const showPlan = currentView === 'plan';
   document.getElementById('filterRow').style.display = showSows ? 'flex' : 'none';
   document.getElementById('list').style.display = showSows ? 'block' : 'none';
-  document.getElementById('statsView').style.display = showSows ? 'none' : 'block';
+  document.getElementById('statsView').style.display = showStats ? 'block' : 'none';
+  document.getElementById('planView').style.display = showPlan ? 'block' : 'none';
   if(!showSows) panel.classList.remove('open');
+  if(showPlan) initPlanRange();
   refreshCurrentView();
 });
 
 function refreshCurrentView(){
   if(currentView === 'stats') renderStats();
+  else if(currentView === 'plan') renderArbeitsplan();
   else render();
 }
 
@@ -982,6 +1014,103 @@ function renderStats(){
     renderStats();
   });
 }
+
+function computeSowTasks(sow){
+  const tasks = [];
+  const phase = getPhase(sow);
+
+  if(phase === 'wartet_rausche'){
+    if(sow.history.length === 0){
+      const expHeat = addDays(sow.purchaseDate, FIRST_HEAT_AFTER_ARRIVAL);
+      tasks.push({ date: expHeat, label: 'Erste Rausche / Deckung erwartet' });
+    } else {
+      const lastWean = sow.history[sow.history.length-1].weanDate;
+      const expHeat = addDays(lastWean, SERVICE_WINDOW_START);
+      const expHeatEnd = addDays(lastWean, SERVICE_WINDOW_END);
+      tasks.push({ date: expHeat, label: `Rausche / Deckung erwartet (Fenster bis ${fmt(expHeatEnd)})` });
+    }
+  }
+  else if(phase === 'im_deckzentrum'){
+    const fmd = firstMatingDate(sow);
+    tasks.push({ date: addDays(fmd, PRUEFUNG_AB_TAG), label: 'Trächtigkeitsprüfung fällig' });
+  }
+  else if(phase === 'traechtig'){
+    const fmd = firstMatingDate(sow);
+    const due = addDays(fmd, GESTATION_DAYS);
+    tasks.push({ date: addDays(fmd, WARTESTALL_AB_TAG), label: 'Umstallen in Wartestall' });
+    tasks.push({ date: addDays(due, -(GESTATION_DAYS-ABFERKELSTALL_VOR_TAG)), label: 'Umstallen in Abferkelstall' });
+    tasks.push({ date: due, label: 'Abferkelung erwartet' });
+  }
+  else if(phase === 'saugend'){
+    tasks.push({ date: addDays(sow.farrowDate, WEAN_DEFAULT_DAYS), label: 'Absetzen fällig' });
+    TREATMENTS.forEach(t=>{
+      const rec = sow.treatments[t.key];
+      if(!rec.done){
+        tasks.push({ date: addDays(sow.farrowDate, t.from), label: `Behandlung fällig: ${t.label}` });
+      }
+    });
+  }
+
+  return tasks.map(t => ({ ...t, sowName: sow.name, sowId: sow.id }));
+}
+
+function computeAllTasks(sowsData, start, end){
+  let all = [];
+  sowsData.forEach(s => { all = all.concat(computeSowTasks(s)); });
+  return all
+    .filter(t => t.date >= start && t.date <= end)
+    .sort((a,b) => a.date.localeCompare(b.date) || a.sowName.localeCompare(b.sowName));
+}
+
+function initPlanRange(){
+  const startEl = document.getElementById('ap-start');
+  const endEl = document.getElementById('ap-end');
+  if(!startEl.value){
+    startEl.value = today();
+    endEl.value = addDays(today(), 7);
+  }
+}
+
+function renderArbeitsplan(){
+  const startEl = document.getElementById('ap-start');
+  const endEl = document.getElementById('ap-end');
+  if(!startEl.value || !endEl.value) return;
+  const start = startEl.value;
+  const end = endEl.value;
+  const tasks = computeAllTasks(sows, start, end);
+
+  const el = document.getElementById('apResults');
+  if(!tasks.length){
+    el.innerHTML = `<div class="empty"><div class="big">Keine Aufgaben</div>Im gewählten Zeitraum stehen keine Termine an.</div>`;
+    return;
+  }
+
+  const grouped = {};
+  tasks.forEach(t => { (grouped[t.date] = grouped[t.date] || []).push(t); });
+
+  el.innerHTML = Object.keys(grouped).sort().map(d=>{
+    const weekday = new Date(d+'T00:00:00').toLocaleDateString('de-DE', { weekday:'long' });
+    return `<div class="stat-section">
+      <h3>${weekday}, ${fmt(d)}</h3>
+      <div class="tasklist">
+        ${grouped[d].map(t=>`<div class="taskrow"><span class="task-sow">${t.sowName}</span><span class="task-label">${t.label}</span></div>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+document.getElementById('ap-start').addEventListener('change', renderArbeitsplan);
+document.getElementById('ap-end').addEventListener('change', renderArbeitsplan);
+document.getElementById('apQuick').addEventListener('click', (e)=>{
+  const chip = e.target.closest('.chip');
+  if(!chip) return;
+  document.querySelectorAll('#apQuick .chip').forEach(c=>c.classList.remove('active'));
+  chip.classList.add('active');
+  const days = Number(chip.dataset.days);
+  document.getElementById('ap-start').value = today();
+  document.getElementById('ap-end').value = addDays(today(), days);
+  renderArbeitsplan();
+});
 
 loadSows();
 setInterval(loadSows, 20000);
