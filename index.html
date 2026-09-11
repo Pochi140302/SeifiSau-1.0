@@ -66,6 +66,16 @@
   .task-sow{ font-weight:600; color:var(--ink); flex:none; }
   .task-label{ color:var(--ink-soft); text-align:right; }
 
+  .print-only{ display:none; }
+  @media print{
+    header, .addbar, .viewtabs, .filterrow, #planView .panel, .toast, .modal-overlay{ display:none !important; }
+    body{ background:#fff; padding:0; }
+    main{ max-width:100%; padding:0 6px; }
+    .print-only{ display:block; font-family:'Source Serif 4', serif; font-size:1.3rem; font-weight:700; margin:0 0 14px; }
+    .stat-section{ break-inside:avoid; }
+    .taskrow{ border:1px solid #999; }
+  }
+
   .panel{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; margin-bottom:18px; display:none; }
   .panel.open{ display:block; }
   .panel h2{ font-family:'Source Serif 4', serif; font-size:1.1rem; margin:0 0 14px; }
@@ -206,7 +216,11 @@
         <button class="chip" data-days="14">14 Tage</button>
         <button class="chip" data-days="30">30 Tage</button>
       </div>
+      <div class="quickrow" style="margin-top:10px;">
+        <button class="btn-secondary" id="printPlanBtn">🖨 Arbeitsplan drucken</button>
+      </div>
     </div>
+    <div id="printHeader" class="print-only"></div>
     <div id="apResults"></div>
   </div>
 </main>
@@ -1021,13 +1035,17 @@ function computeSowTasks(sow){
 
   if(phase === 'wartet_rausche'){
     if(sow.history.length === 0){
-      const expHeat = addDays(sow.purchaseDate, FIRST_HEAT_AFTER_ARRIVAL);
-      tasks.push({ date: expHeat, label: 'Erste Rausche / Deckung erwartet' });
+      if(sow.purchaseDate){
+        const expHeat = addDays(sow.purchaseDate, FIRST_HEAT_AFTER_ARRIVAL);
+        tasks.push({ date: expHeat, label: 'Erste Rausche / Deckung erwartet' });
+      }
     } else {
       const lastWean = sow.history[sow.history.length-1].weanDate;
-      const expHeat = addDays(lastWean, SERVICE_WINDOW_START);
-      const expHeatEnd = addDays(lastWean, SERVICE_WINDOW_END);
-      tasks.push({ date: expHeat, label: `Rausche / Deckung erwartet (Fenster bis ${fmt(expHeatEnd)})` });
+      if(lastWean){
+        const expHeat = addDays(lastWean, SERVICE_WINDOW_START);
+        const expHeatEnd = addDays(lastWean, SERVICE_WINDOW_END);
+        tasks.push({ date: expHeat, label: `Rausche / Deckung erwartet (Fenster bis ${fmt(expHeatEnd)})` });
+      }
     }
   }
   else if(phase === 'im_deckzentrum'){
@@ -1056,7 +1074,10 @@ function computeSowTasks(sow){
 
 function computeAllTasks(sowsData, start, end){
   let all = [];
-  sowsData.forEach(s => { all = all.concat(computeSowTasks(s)); });
+  sowsData.forEach(s => {
+    try{ all = all.concat(computeSowTasks(s)); }
+    catch(e){ console.error('Arbeitsplan: Fehler bei Sau', s.name, e); }
+  });
   return all
     .filter(t => t.date >= start && t.date <= end)
     .sort((a,b) => a.date.localeCompare(b.date) || a.sowName.localeCompare(b.sowName));
@@ -1110,6 +1131,13 @@ document.getElementById('apQuick').addEventListener('click', (e)=>{
   document.getElementById('ap-start').value = today();
   document.getElementById('ap-end').value = addDays(today(), days);
   renderArbeitsplan();
+});
+
+document.getElementById('printPlanBtn').addEventListener('click', ()=>{
+  const start = document.getElementById('ap-start').value;
+  const end = document.getElementById('ap-end').value;
+  document.getElementById('printHeader').textContent = `Arbeitsplan ${fmt(start)} – ${fmt(end)}`;
+  window.print();
 });
 
 loadSows();
