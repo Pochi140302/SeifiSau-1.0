@@ -178,6 +178,11 @@
     <button class="chip" data-filter="saugend">Säugend</button>
   </div>
 
+  <div class="filterrow" id="sowViewToggle">
+    <button class="chip active" data-mode="cards">Karten</button>
+    <button class="chip" data-mode="table">Tabelle (alle Sauen)</button>
+  </div>
+
   <div class="panel" id="addPanel">
     <h2>Neue Sau eintragen</h2>
     <div class="field"><label>Name / Ohrmarke</label><input type="text" id="f-name" placeholder="z. B. 214 oder Bertha"></div>
@@ -201,6 +206,7 @@
   </div>
 
   <div id="list"></div>
+  <div id="sowsTableView" style="display:none;"></div>
   <div id="statsView" style="display:none;"></div>
 
   <div id="planView" style="display:none;">
@@ -504,15 +510,29 @@ function historyHtml(sow){
 }
 function firstMatingDateFrom(h){ if(!h.matings || !h.matings.length) return null; return h.matings.map(m=>m.date).sort()[0]; }
 
+let sowViewMode = 'cards';
+
 function render(){
   const list = document.getElementById('list');
-  list.innerHTML = '';
+  const tableEl = document.getElementById('sowsTableView');
   let filtered = sows.filter(s => currentFilter==='all' || getPhase(s)===currentFilter);
 
   if(filtered.length===0){
+    list.style.display = 'block';
+    tableEl.style.display = 'none';
     list.innerHTML = `<div class="empty"><div class="big">Noch keine Einträge</div>Trag deine erste Sau ein, um den kompletten Zyklus zu verfolgen.</div>`;
     return;
   }
+
+  if(sowViewMode === 'table'){
+    list.style.display = 'none';
+    tableEl.style.display = 'block';
+    tableEl.innerHTML = renderSowsBioTable(filtered);
+    return;
+  }
+  list.style.display = 'block';
+  tableEl.style.display = 'none';
+  list.innerHTML = '';
 
   const computed = [];
   filtered.forEach(s=>{
@@ -555,6 +575,33 @@ function render(){
     `;
     list.appendChild(card);
   });
+}
+
+function renderSowsBioTable(filtered){
+  const phaseLabels = { wartet_rausche:'Wartet auf Rausche', im_deckzentrum:'Deckzentrum', traechtig:'Tragend', saugend:'Säugend' };
+  const sorted = filtered.slice().sort((a,b)=> a.name.localeCompare(b.name, undefined, {numeric:true}));
+  const rows = sorted.map(s=>{
+    const hist = s.history.slice();
+    if(s.farrowDate) hist.push({ farrowDate: s.farrowDate });
+    const lastFarrow = hist.filter(h=>h.farrowDate).map(h=>h.farrowDate).sort().pop();
+    return `<tr>
+      <td>${s.name}</td>
+      <td>${s.breed || '–'}</td>
+      <td>${s.birthDate ? fmt(s.birthDate) : '–'}</td>
+      <td>${phaseLabels[getPhase(s)] || '–'}</td>
+      <td>${s.cycleNumber ?? '–'}</td>
+      <td>${lastFarrow ? fmt(lastFarrow) : '–'}</td>
+      <td>${s.purchaseDate ? fmt(s.purchaseDate) : '–'}</td>
+      <td>${s.breederName || '–'}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="stats-table-wrap"><table class="stats-table">
+    <thead><tr>
+      <th>Ohrmarke</th><th>Rasse</th><th>Geb.datum</th><th>Status</th><th>Zyklus</th>
+      <th>Letzte Ferkelung</th><th>Zugangsdatum</th><th>Lieferant</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
 }
 
 /* ---------- modal system ---------- */
@@ -751,9 +798,18 @@ document.getElementById('list').addEventListener('click', async (e)=>{
 document.getElementById('filterRow').addEventListener('click', (e)=>{
   const chip = e.target.closest('.chip');
   if(!chip) return;
-  document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+  document.querySelectorAll('#filterRow .chip').forEach(c=>c.classList.remove('active'));
   chip.classList.add('active');
   currentFilter = chip.dataset.filter;
+  render();
+});
+
+document.getElementById('sowViewToggle').addEventListener('click', (e)=>{
+  const chip = e.target.closest('.chip');
+  if(!chip) return;
+  document.querySelectorAll('#sowViewToggle .chip').forEach(c=>c.classList.remove('active'));
+  chip.classList.add('active');
+  sowViewMode = chip.dataset.mode;
   render();
 });
 
