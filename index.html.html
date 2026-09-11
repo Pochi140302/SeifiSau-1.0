@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sauenplaner</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+
+  :root{
+    --oat:#EDE6D6; --oat-dark:#E1D8C4; --ink:#3B2E23; --ink-soft:#6B5D4F;
+    --moss:#5C6B47; --moss-dark:#475436; --rust:#A65A2E; --alert:#B24C3A;
+    --amber:#C08A2E; --line:#D2C6AE; --card:#F7F3E9;
+  }
+  *{box-sizing:border-box;}
+  body{ margin:0; background:var(--oat); color:var(--ink); font-family:'IBM Plex Sans', sans-serif;
+    -webkit-font-smoothing:antialiased; padding-bottom:40px; }
+  header{ padding:24px 20px 18px; border-bottom:1px solid var(--line); background:var(--oat); position:sticky; top:0; z-index:5; }
+  h1{ font-family:'Source Serif 4', serif; font-weight:700; font-size:1.6rem; margin:0 0 4px; letter-spacing:-0.01em; }
+  .sub{ font-size:0.86rem; color:var(--ink-soft); margin:0; }
+  main{ max-width:660px; margin:0 auto; padding:16px 14px 0; }
+
+  .addbar{ display:flex; gap:8px; margin-bottom:16px; }
+  .addbtn{ flex:1; background:var(--moss); color:#fff; border:none; border-radius:10px; padding:13px 16px;
+    font-size:0.94rem; font-weight:600; font-family:inherit; cursor:pointer; }
+  .addbtn:active{ background:var(--moss-dark); }
+
+  .filterrow{ display:flex; gap:6px; margin-bottom:14px; overflow-x:auto; }
+  .chip{ border:1px solid var(--line); background:var(--card); color:var(--ink-soft); border-radius:999px;
+    padding:6px 12px; font-size:0.78rem; font-family:inherit; white-space:nowrap; cursor:pointer; flex:none; }
+  .chip.active{ background:var(--ink); color:var(--oat); border-color:var(--ink); }
+
+  .viewtabs{ display:flex; gap:6px; margin-bottom:14px; background:var(--oat-dark); padding:4px; border-radius:10px; }
+  .viewtab{ flex:1; border:none; background:transparent; padding:9px; border-radius:7px; font-family:inherit;
+    font-size:0.85rem; font-weight:600; color:var(--ink-soft); cursor:pointer; }
+  .viewtab.active{ background:var(--card); color:var(--ink); box-shadow:0 1px 3px rgba(59,46,35,0.12); }
+
+  .stat-section{ margin-bottom:22px; }
+  .stat-section h3{ font-family:'Source Serif 4', serif; font-size:1.02rem; margin:0 0 10px; }
+  .stat-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .stat-card{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .stat-value{ font-family:'Source Serif 4', serif; font-size:1.5rem; font-weight:700; color:var(--ink); }
+  .stat-label{ font-size:0.76rem; color:var(--ink-soft); margin-top:2px; }
+  .stat-note{ font-size:0.76rem; color:var(--ink-soft); margin-top:4px; }
+
+  .barlist{ display:flex; flex-direction:column; gap:9px; }
+  .barrow{ display:flex; align-items:center; gap:8px; font-size:0.82rem; }
+  .barrow .barlabel{ width:130px; flex:none; color:var(--ink-soft); }
+  .barrow .bartrack{ flex:1; background:var(--oat-dark); border-radius:6px; height:14px; overflow:hidden; }
+  .barrow .barfill{ height:100%; background:var(--moss); border-radius:6px; }
+  .barrow .barcount{ width:26px; flex:none; text-align:right; color:var(--ink); font-weight:600; }
+
+  .stats-table-wrap{ overflow-x:auto; border:1px solid var(--line); border-radius:10px; }
+  table.stats-table{ width:100%; border-collapse:collapse; font-size:0.8rem; }
+  table.stats-table th{ text-align:left; font-weight:600; color:var(--ink-soft); padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap; background:var(--oat-dark); }
+  table.stats-table td{ padding:7px 10px; border-bottom:1px solid var(--line); white-space:nowrap; color:var(--ink); }
+  table.stats-table tr:last-child td{ border-bottom:none; }
+
+  .panel{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; margin-bottom:18px; display:none; }
+  .panel.open{ display:block; }
+  .panel h2{ font-family:'Source Serif 4', serif; font-size:1.1rem; margin:0 0 14px; }
+  .field{ margin-bottom:12px; }
+  .field label{ display:block; font-size:0.76rem; color:var(--ink-soft); margin-bottom:4px; font-weight:500; }
+  .field input, .field select{ width:100%; padding:10px 11px; border:1px solid var(--line); border-radius:8px;
+    font-family:inherit; font-size:0.94rem; background:#fff; color:var(--ink); }
+  .field input:focus, .field select:focus{ outline:2px solid var(--moss); outline-offset:1px; }
+  .radiorow{ display:flex; gap:10px; }
+  .radiopill{ flex:1; text-align:center; border:1px solid var(--line); border-radius:8px; padding:10px; cursor:pointer;
+    font-size:0.87rem; background:#fff; }
+  .radiopill.sel{ background:var(--moss); color:#fff; border-color:var(--moss); }
+  .panelbtns{ display:flex; gap:8px; margin-top:14px; }
+  .btn-primary{ background:var(--moss); color:#fff; border:none; border-radius:8px; padding:11px 18px;
+    font-family:inherit; font-weight:600; font-size:0.9rem; cursor:pointer; flex:1; }
+  .btn-secondary{ background:transparent; color:var(--ink-soft); border:1px solid var(--line); border-radius:8px;
+    padding:11px 18px; font-family:inherit; font-size:0.9rem; cursor:pointer; }
+
+  .empty{ text-align:center; padding:46px 20px; color:var(--ink-soft); }
+  .empty .big{ font-family:'Source Serif 4', serif; font-size:1.15rem; color:var(--ink); margin-bottom:6px; }
+
+  .card{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:15px 16px;
+    margin-bottom:12px; border-left:5px solid var(--moss); }
+  .card.due-soon{ border-left-color:var(--amber); }
+  .card.due-now{ border-left-color:var(--alert); }
+  .card.lactating{ border-left-color:var(--rust); }
+  .card.deckzentrum{ border-left-color:#8A7A55; }
+
+  .card-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:4px; }
+  .card-name-wrap{ display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+  .card-name{ font-family:'Source Serif 4', serif; font-weight:600; font-size:1.12rem; }
+  .cycle-tag{ font-size:0.72rem; color:var(--ink-soft); background:var(--oat-dark); padding:2px 8px; border-radius:999px; }
+  .status-tag{ font-size:0.7rem; padding:3px 9px; border-radius:999px; font-weight:600; background:var(--moss); color:#fff; white-space:nowrap; }
+  .status-tag.soon{ background:var(--amber); }
+  .status-tag.now{ background:var(--alert); }
+  .status-tag.lact{ background:var(--rust); }
+  .status-tag.deck{ background:#8A7A55; }
+
+  .biorow{ font-size:0.76rem; color:var(--ink-soft); margin-bottom:8px; }
+  .rows{ font-size:0.87rem; color:var(--ink-soft); line-height:1.65; }
+  .rows b{ color:var(--ink); font-weight:600; }
+
+  .treatlist{ margin-top:10px; border-top:1px solid var(--line); padding-top:10px; }
+  .treatrow{ display:flex; justify-content:space-between; align-items:center; padding:6px 0; font-size:0.85rem; gap:8px; }
+  .treatname{ color:var(--ink); }
+  .treatwin{ color:var(--ink-soft); font-size:0.76rem; display:block; }
+  .treatdone{ color:var(--moss-dark); font-weight:600; font-size:0.78rem; white-space:nowrap; }
+  .treatoverdue{ color:var(--alert); font-weight:600; font-size:0.78rem; white-space:nowrap; }
+  .treatbtn{ background:none; border:1px solid var(--line); border-radius:7px; padding:5px 10px; font-family:inherit;
+    font-size:0.76rem; color:var(--moss-dark); cursor:pointer; white-space:nowrap; }
+
+  .card-actions{ display:flex; gap:14px; margin-top:11px; padding-top:11px; border-top:1px solid var(--line); flex-wrap:wrap; }
+  .card-actions button{ background:none; border:none; font-family:inherit; font-size:0.8rem; color:var(--moss-dark);
+    font-weight:600; cursor:pointer; padding:0; }
+  .card-actions button.del{ color:var(--alert); }
+  .card-actions button.ghost{ color:var(--ink-soft); font-weight:500; }
+
+  .history-block{ margin-top:10px; padding-top:10px; border-top:1px dashed var(--line); font-size:0.8rem; color:var(--ink-soft); }
+  .history-item{ margin-bottom:6px; }
+
+  .toast{ position:fixed; bottom:22px; left:50%; transform:translateX(-50%); background:var(--ink); color:var(--oat);
+    padding:10px 18px; border-radius:999px; font-size:0.85rem; opacity:0; pointer-events:none; transition:opacity 0.25s; z-index:50;}
+  .toast.show{ opacity:1; }
+
+  /* modal */
+  .modal-overlay{ position:fixed; inset:0; background:rgba(59,46,35,0.45); display:none; align-items:flex-end;
+    justify-content:center; z-index:40; }
+  .modal-overlay.open{ display:flex; }
+  .modal-box{ background:var(--card); width:100%; max-width:520px; border-radius:16px 16px 0 0; padding:20px;
+    max-height:85vh; overflow-y:auto; }
+  @media(min-width:600px){ .modal-overlay{ align-items:center; } .modal-box{ border-radius:16px; } }
+  .modal-box h3{ font-family:'Source Serif 4', serif; font-size:1.1rem; margin:0 0 14px; }
+  .modal-btns{ display:flex; gap:8px; margin-top:16px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Sauenplaner</h1>
+  <p class="sub">Zukauf, Deckung, Trächtigkeit, Abferkelung &amp; Absetzen im Blick</p>
+</header>
+
+<main>
+  <div class="addbar">
+    <button class="addbtn" id="toggleAdd">+ Sau eintragen</button>
+    <button class="btn-secondary" id="refreshBtn" style="flex:none;">⟳</button>
+  </div>
+
+  <div class="viewtabs" id="viewTabs">
+    <button class="viewtab active" data-view="sows">Sauen</button>
+    <button class="viewtab" data-view="stats">Auswertung</button>
+  </div>
+
+  <div class="filterrow" id="filterRow">
+    <button class="chip active" data-filter="all">Alle</button>
+    <button class="chip" data-filter="wartet_rausche">Wartet auf Rausche</button>
+    <button class="chip" data-filter="im_deckzentrum">Deckzentrum</button>
+    <button class="chip" data-filter="traechtig">Tragend</button>
+    <button class="chip" data-filter="saugend">Säugend</button>
+  </div>
+
+  <div class="panel" id="addPanel">
+    <h2>Neue Sau eintragen</h2>
+    <div class="field"><label>Name / Ohrmarke</label><input type="text" id="f-name" placeholder="z. B. 214 oder Bertha"></div>
+    <div class="field"><label>Geburtsdatum der Sau</label><input type="date" id="f-birth"></div>
+    <div class="field"><label>Zukaufsdatum</label><input type="date" id="f-purchase"></div>
+    <div class="field"><label>Züchter</label><input type="text" id="f-breeder" placeholder="Name des Züchters/Betriebs"></div>
+    <div class="field">
+      <label>Status bei Zukauf</label>
+      <div class="radiorow">
+        <div class="radiopill sel" data-val="jungsau" id="pill-jungsau">Jungsau (ungedeckt)</div>
+        <div class="radiopill" data-val="traechtig" id="pill-traechtig">Trächtig</div>
+      </div>
+    </div>
+    <div class="field" id="f-purchbreed-wrap" style="display:none;">
+      <label>Belegdatum (vom Züchter)</label><input type="date" id="f-purchbreed">
+    </div>
+    <div class="panelbtns">
+      <button class="btn-primary" id="saveNew">Speichern</button>
+      <button class="btn-secondary" id="cancelNew">Abbrechen</button>
+    </div>
+  </div>
+
+  <div id="list"></div>
+  <div id="statsView" style="display:none;"></div>
+</main>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-box" id="modalBox"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const GESTATION_DAYS = 115;
+const WARTESTALL_AB_TAG = 28;
+const ABFERKELSTALL_VOR_TAG = 112;
+const PRUEFUNG_AB_TAG = 21;
+const WEAN_DEFAULT_DAYS = 28;
+const SERVICE_WINDOW_START = 4;
+const SERVICE_WINDOW_END = 7;
+const FIRST_HEAT_AFTER_ARRIVAL = 5;
+
+const TREATMENTS = [
+  { key:'naxcel',     label:'Naxcel + Schwanz kupieren', from:1,  to:1,  counts:false },
+  { key:'iron',       label:'Eisen-Impfung',              from:3,  to:3,  counts:false },
+  { key:'castration', label:'Kastration',                 from:5,  to:15, counts:true  },
+  { key:'circo',      label:'Circo Maxx Impfung',          from:10, to:15, counts:false },
+  { key:'draxxin',    label:'Draxxin Impfung',             from:15, to:20, counts:false },
+];
+
+let sows = [];
+let currentFilter = 'all';
+
+function fmt(d){ if(!d) return '–'; const dt = new Date(d+'T00:00:00'); return dt.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}); }
+function addDays(dateStr, days){ const d = new Date(dateStr+'T00:00:00'); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); }
+function daysBetween(a,b){ return Math.round((new Date(b+'T00:00:00') - new Date(a+'T00:00:00'))/86400000); }
+function today(){ return new Date().toISOString().slice(0,10); }
+function uid(){ return 's_'+Date.now()+'_'+Math.random().toString(36).slice(2,8); }
+function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1800); }
+
+function blankTreatments(){
+  const o={};
+  TREATMENTS.forEach(t=>{ o[t.key] = t.counts ? {done:false,date:null,male:null,female:null} : {done:false,date:null}; });
+  return o;
+}
+
+/* ====== DATENBANK-KONFIGURATION ======
+   Hier die zwei Werte aus deinem Supabase-Projekt eintragen
+   (Project Settings -> API -> "Project URL" und "anon public" key).
+   Siehe Anleitung, die Claude dir dazu gegeben hat. */
+const SUPABASE_URL = 'https://igmjgjlufodwerikyejb.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_NhMQskoDbHU0VgtDjmpgag_2W-2aPTf';
+const TABLE = 'sows';
+/* ====================================== */
+
+function sbHeaders(extra){
+  return Object.assign({
+    'apikey': SUPABASE_ANON_KEY,
+    'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+    'Content-Type': 'application/json'
+  }, extra||{});
+}
+
+async function loadSows(){
+  try{
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?select=id,data`, { headers: sbHeaders() });
+    if(!res.ok){
+      const errText = await res.text();
+      alert('Fehler beim Laden (Code ' + res.status + '):\n' + errText);
+      sows = [];
+      refreshCurrentView();
+      return;
+    }
+    const rows = await res.json();
+    sows = rows.map(r => r.data);
+  }catch(e){
+    sows = [];
+    alert('Verbindung zur Datenbank fehlgeschlagen:\n' + e.message);
+  }
+  refreshCurrentView();
+}
+
+async function persistSow(sow){
+  try{
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?on_conflict=id`, {
+      method:'POST',
+      headers: sbHeaders({'Prefer':'resolution=merge-duplicates,return=minimal'}),
+      body: JSON.stringify([{ id: sow.id, data: sow }])
+    });
+    if(!res.ok){
+      const errText = await res.text();
+      alert('Fehler beim Speichern (Code ' + res.status + '):\n' + errText);
+    }
+  }catch(e){ alert('Speichern fehlgeschlagen:\n' + e.message); }
+}
+
+async function deleteSowRemote(id){
+  try{
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?id=eq.${id}`, { method:'DELETE', headers: sbHeaders() });
+    if(!res.ok){
+      const errText = await res.text();
+      alert('Fehler beim Löschen (Code ' + res.status + '):\n' + errText);
+    }
+  }catch(e){ alert('Löschen fehlgeschlagen:\n' + e.message); }
+}
+
+/* ---------- new sow panel ---------- */
+const panel = document.getElementById('addPanel');
+let purchaseStatusVal = 'jungsau';
+document.getElementById('pill-jungsau').addEventListener('click', ()=>setPurchStatus('jungsau'));
+document.getElementById('pill-traechtig').addEventListener('click', ()=>setPurchStatus('traechtig'));
+function setPurchStatus(val){
+  purchaseStatusVal = val;
+  document.getElementById('pill-jungsau').classList.toggle('sel', val==='jungsau');
+  document.getElementById('pill-traechtig').classList.toggle('sel', val==='traechtig');
+  document.getElementById('f-purchbreed-wrap').style.display = val==='traechtig' ? 'block' : 'none';
+}
+document.getElementById('toggleAdd').addEventListener('click', ()=>{
+  panel.classList.toggle('open');
+  if(panel.classList.contains('open')) document.getElementById('f-purchase').value = today();
+});
+document.getElementById('cancelNew').addEventListener('click', ()=>{ panel.classList.remove('open'); clearAddForm(); });
+function clearAddForm(){
+  document.getElementById('f-name').value='';
+  document.getElementById('f-birth').value='';
+  document.getElementById('f-purchbreed').value='';
+  document.getElementById('f-breeder').value='';
+  setPurchStatus('jungsau');
+}
+document.getElementById('saveNew').addEventListener('click', async ()=>{
+  const name = document.getElementById('f-name').value.trim();
+  const birth = document.getElementById('f-birth').value;
+  const purchase = document.getElementById('f-purchase').value;
+  const breeder = document.getElementById('f-breeder').value.trim();
+  if(!name || !purchase){ showToast('Bitte mindestens Name und Zukaufsdatum angeben'); return; }
+  const sow = {
+    id: uid(), name, birthDate: birth, breed:'F1', purchaseDate: purchase, breederName: breeder,
+    purchaseStatus: purchaseStatusVal, cycleNumber: 1,
+    matings: [], pregCheckDate:null, pregCheckResult:null,
+    farrowDate:null, pigletsLive:null, pigletsStillborn:null,
+    treatments: blankTreatments(), weanDate:null, pigletsWeaned:null,
+    failedMatings: 0,
+    history: []
+  };
+  if(purchaseStatusVal==='traechtig'){
+    const bd = document.getElementById('f-purchbreed').value;
+    if(!bd){ showToast('Bitte Belegdatum angeben'); return; }
+    sow.matings.push({date:bd, method:'zukauf_traechtig', eberName:'', eberNummer:''});
+    sow.pregCheckResult = 'tragend';
+  }
+  sows.push(sow);
+  await persistSow(sow);
+  panel.classList.remove('open'); clearAddForm(); render();
+  showToast('Sau eingetragen');
+});
+
+/* ---------- phase / status computation ---------- */
+function firstMatingDate(sow){
+  if(!sow.matings.length) return null;
+  return sow.matings.map(m=>m.date).sort()[0];
+}
+function getPhase(sow){
+  if(sow.weanDate) return 'wartet_rausche'; // will be reset on wean, but safety
+  if(sow.farrowDate && !sow.weanDate) return 'saugend';
+  if(sow.pregCheckResult==='tragend') return 'traechtig';
+  if(sow.matings.length>0) return 'im_deckzentrum';
+  return 'wartet_rausche';
+}
+
+function computeCard(sow){
+  const phase = getPhase(sow);
+  let rows=[], statusClass='', statusLabel='', sortDate=today();
+
+  if(phase==='wartet_rausche'){
+    let expHeat;
+    if(sow.history.length===0){
+      expHeat = addDays(sow.purchaseDate, FIRST_HEAT_AFTER_ARRIVAL);
+      rows.push(`Zugekauft als <b>Jungsau</b> am ${fmt(sow.purchaseDate)}`);
+    } else {
+      const lastWean = sow.history[sow.history.length-1].weanDate;
+      expHeat = addDays(lastWean, SERVICE_WINDOW_START);
+      const expHeatEnd = addDays(lastWean, SERVICE_WINDOW_END);
+      rows.push(`Zuletzt abgesetzt: <b>${fmt(lastWean)}</b>`);
+      rows.push(`Erwartete Rausche: <b>${fmt(expHeat)} – ${fmt(expHeatEnd)}</b>`);
+    }
+    if(sow.history.length===0) rows.push(`Erste Rausche erwartet ab: <b>${fmt(expHeat)}</b>`);
+    const d = daysBetween(today(), expHeat);
+    statusClass = d<=0 ? 'now' : (d<=3 ? 'soon' : '');
+    statusLabel = d<=0 ? 'Rausche / Deckung fällig' : `Rausche in ~${d} Tg.`;
+    sortDate = expHeat;
+  }
+
+  else if(phase==='im_deckzentrum'){
+    const fmd = firstMatingDate(sow);
+    const pruefAb = addDays(fmd, PRUEFUNG_AB_TAG);
+    sow.matings.forEach((m,i)=>{
+      const methodLabel = m.method==='natursprung' ? 'Natursprung' : (m.method==='besamung' ? `Besamung (Eber: ${m.eberName||'–'} / ${m.eberNummer||'–'})` : m.method);
+      rows.push(`Deckung ${i+1}: <b>${fmt(m.date)}</b> – ${methodLabel}`);
+    });
+    rows.push(`Anzahl Deckungen: <b>${sow.matings.length}</b>`);
+    rows.push(`Trächtigkeitsprüfung möglich ab: <b>${fmt(pruefAb)}</b>`);
+    const d = daysBetween(today(), pruefAb);
+    statusClass = d<=0 ? 'now' : (d<=3 ? 'soon' : 'deck');
+    statusLabel = d<=0 ? 'Prüfung fällig' : `Prüfung in ~${d} Tg.`;
+    sortDate = pruefAb;
+  }
+
+  else if(phase==='traechtig'){
+    const fmd = firstMatingDate(sow);
+    const due = addDays(fmd, GESTATION_DAYS);
+    const wartestallAb = addDays(fmd, WARTESTALL_AB_TAG);
+    const abferkelstallAb = addDays(due, -(GESTATION_DAYS-ABFERKELSTALL_VOR_TAG));
+    sow.matings.forEach((m,i)=>{
+      const methodLabel = m.method==='natursprung' ? 'Natursprung' : (m.method==='besamung' ? `Besamung (Eber: ${m.eberName||'–'} / ${m.eberNummer||'–'})` : 'bei Zukauf gedeckt');
+      rows.push(`Deckung ${i+1}: <b>${fmt(m.date)}</b> – ${methodLabel}`);
+    });
+    if(sow.pregCheckDate) rows.push(`Trächtigkeitsprüfung: <b>${fmt(sow.pregCheckDate)}</b> – tragend`);
+    rows.push(`Im Wartestall seit: <b>${fmt(wartestallAb)}</b>`);
+    rows.push(`Umstallen Abferkelstall ab: <b>${fmt(abferkelstallAb)}</b>`);
+    rows.push(`Voraussichtliche Abferkelung: <b>${fmt(due)}</b>`);
+    const d = daysBetween(today(), due);
+    statusClass = d<0 ? 'now' : (d<=3 ? 'now' : (d<=10 ? 'soon' : ''));
+    statusLabel = d<0 ? 'Termin überfällig' : `Abferkelung in ~${d} Tg.`;
+    sortDate = due;
+  }
+
+  else if(phase==='saugend'){
+    rows.push(`Abgeferkelt: <b>${fmt(sow.farrowDate)}</b>`);
+    rows.push(`Ferkel lebend / totgeboren: <b>${sow.pigletsLive ?? '–'} / ${sow.pigletsStillborn ?? '–'}</b>`);
+    const wean = addDays(sow.farrowDate, WEAN_DEFAULT_DAYS);
+    rows.push(`Geplantes Absetzen: <b>${fmt(wean)}</b>`);
+    statusClass='lact';
+    const d = daysBetween(today(), wean);
+    statusLabel = d<=0 ? 'Absetzen fällig' : `Säugend, noch ~${d} Tg.`;
+    sortDate = wean;
+  }
+
+  return { phase, rows, statusClass, statusLabel, sortDate };
+}
+
+function treatmentRowHtml(sow){
+  if(getPhase(sow)!=='saugend') return '';
+  let html = '<div class="treatlist">';
+  TREATMENTS.forEach(t=>{
+    const rec = sow.treatments[t.key];
+    const winFrom = addDays(sow.farrowDate, t.from);
+    const winTo = addDays(sow.farrowDate, t.to);
+    const winLabel = t.from===t.to ? `Tag ${t.from} · ${fmt(winFrom)}` : `Tag ${t.from}–${t.to} · ${fmt(winFrom)}–${fmt(winTo)}`;
+    let right;
+    if(rec.done){
+      let extra = t.counts ? ` (${rec.male ?? 0} m / ${rec.female ?? 0} w)` : '';
+      right = `<span class="treatdone">✓ ${fmt(rec.date)}${extra}</span>`;
+    } else {
+      const overdue = daysBetween(today(), winTo) < 0;
+      right = `<button class="treatbtn" data-act="treat" data-key="${t.key}" data-id="${sow.id}">${overdue ? 'überfällig – eintragen' : 'eintragen'}</button>`;
+    }
+    html += `<div class="treatrow"><div><span class="treatname">${t.label}</span><span class="treatwin">${winLabel}</span></div>${right}</div>`;
+  });
+  html += '</div>';
+  return html;
+}
+
+function historyHtml(sow){
+  if(!sow.history.length) return '';
+  let html = '<div class="history-block"><b style="color:var(--ink);">Bisherige Zyklen:</b>';
+  sow.history.slice().reverse().forEach(h=>{
+    html += `<div class="history-item">Zyklus ${h.cycleNumber}: Belegt ${fmt(firstMatingDateFrom(h))} · Ferkel ${h.pigletsLive ?? '–'} lebend / ${h.pigletsStillborn ?? '–'} tot · Abgesetzt ${fmt(h.weanDate)} (${h.pigletsWeaned ?? '–'} Ferkel)</div>`;
+  });
+  html += '</div>';
+  return html;
+}
+function firstMatingDateFrom(h){ if(!h.matings || !h.matings.length) return null; return h.matings.map(m=>m.date).sort()[0]; }
+
+function render(){
+  const list = document.getElementById('list');
+  list.innerHTML = '';
+  let filtered = sows.filter(s => currentFilter==='all' || getPhase(s)===currentFilter);
+
+  if(filtered.length===0){
+    list.innerHTML = `<div class="empty"><div class="big">Noch keine Einträge</div>Trag deine erste Sau ein, um den kompletten Zyklus zu verfolgen.</div>`;
+    return;
+  }
+
+  const computed = filtered.map(s=>({sow:s, info:computeCard(s)}));
+  computed.sort((a,b)=> new Date(a.info.sortDate) - new Date(b.info.sortDate));
+
+  computed.forEach(({sow, info})=>{
+    const card = document.createElement('div');
+    const cls = info.statusClass==='now' ? 'due-now' : info.statusClass==='soon' ? 'due-soon' : info.statusClass==='lact' ? 'lactating' : info.statusClass==='deck' ? 'deckzentrum' : '';
+    card.className = 'card ' + cls;
+
+    let actions = '';
+    if(info.phase==='wartet_rausche') actions += `<button data-act="mating" data-id="${sow.id}">Deckung eintragen</button>`;
+    if(info.phase==='im_deckzentrum'){
+      actions += `<button data-act="mating" data-id="${sow.id}" class="ghost">weitere Deckung</button>`;
+      actions += `<button data-act="pregcheck" data-id="${sow.id}">Trächtigkeitsprüfung eintragen</button>`;
+    }
+    if(info.phase==='traechtig') actions += `<button data-act="farrow" data-id="${sow.id}">Abferkelung eintragen</button>`;
+    if(info.phase==='saugend') actions += `<button data-act="wean" data-id="${sow.id}">Absetzen eintragen</button>`;
+    actions += `<button data-act="del" data-id="${sow.id}" class="del">Löschen</button>`;
+
+    card.innerHTML = `
+      <div class="card-top">
+        <div class="card-name-wrap">
+          <span class="card-name">${sow.name}</span>
+          <span class="cycle-tag">Zyklus ${sow.cycleNumber}</span>
+        </div>
+        <span class="status-tag ${info.statusClass}">${info.statusLabel}</span>
+      </div>
+      <div class="biorow">${sow.breed} · geboren ${fmt(sow.birthDate)}${sow.breederName ? ' · Züchter: ' + sow.breederName : ''}</div>
+      <div class="rows">${info.rows.join('<br>')}</div>
+      ${treatmentRowHtml(sow)}
+      ${historyHtml(sow)}
+      <div class="card-actions">${actions}</div>
+    `;
+    list.appendChild(card);
+  });
+}
+
+/* ---------- modal system ---------- */
+const overlay = document.getElementById('modalOverlay');
+const modalBox = document.getElementById('modalBox');
+function closeModal(){ overlay.classList.remove('open'); modalBox.innerHTML=''; }
+overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeModal(); });
+
+function openMatingModal(sow){
+  modalBox.innerHTML = `
+    <h3>Deckung eintragen</h3>
+    <div class="field"><label>Deckdatum</label><input type="date" id="m-date" value="${today()}"></div>
+    <div class="field">
+      <label>Art der Deckung</label>
+      <div class="radiorow">
+        <div class="radiopill sel" data-val="natursprung" id="m-pill-nat">Natursprung</div>
+        <div class="radiopill" data-val="besamung" id="m-pill-bes">Besamung</div>
+      </div>
+    </div>
+    <div id="m-eber-wrap" style="display:none;">
+      <div class="field"><label>Name des Ebers</label><input type="text" id="m-ebername" placeholder="z. B. Max"></div>
+      <div class="field"><label>Nummer des Ebers</label><input type="text" id="m-ebernummer" placeholder="z. B. 1042"></div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-primary" id="m-save">Speichern</button>
+      <button class="btn-secondary" id="m-cancel">Abbrechen</button>
+    </div>
+  `;
+  let method='natursprung';
+  document.getElementById('m-pill-nat').onclick = ()=>{ method='natursprung'; document.getElementById('m-pill-nat').classList.add('sel'); document.getElementById('m-pill-bes').classList.remove('sel'); document.getElementById('m-eber-wrap').style.display='none'; };
+  document.getElementById('m-pill-bes').onclick = ()=>{ method='besamung'; document.getElementById('m-pill-bes').classList.add('sel'); document.getElementById('m-pill-nat').classList.remove('sel'); document.getElementById('m-eber-wrap').style.display='block'; };
+  document.getElementById('m-cancel').onclick = closeModal;
+  document.getElementById('m-save').onclick = async ()=>{
+    const date = document.getElementById('m-date').value;
+    if(!date){ showToast('Bitte Datum angeben'); return; }
+    const mating = { date, method, eberName:'', eberNummer:'' };
+    if(method==='besamung'){
+      mating.eberName = document.getElementById('m-ebername').value.trim();
+      mating.eberNummer = document.getElementById('m-ebernummer').value.trim();
+    }
+    sow.matings.push(mating);
+    await persistSow(sow); closeModal(); render(); showToast('Deckung eingetragen');
+  };
+  overlay.classList.add('open');
+}
+
+function openPregCheckModal(sow){
+  modalBox.innerHTML = `
+    <h3>Trächtigkeitsprüfung</h3>
+    <div class="field"><label>Datum der Prüfung</label><input type="date" id="p-date" value="${today()}"></div>
+    <div class="field">
+      <label>Ergebnis</label>
+      <div class="radiorow">
+        <div class="radiopill sel" data-val="tragend" id="p-pill-yes">Tragend</div>
+        <div class="radiopill" data-val="nicht_tragend" id="p-pill-no">Nicht tragend</div>
+      </div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-primary" id="p-save">Speichern</button>
+      <button class="btn-secondary" id="p-cancel">Abbrechen</button>
+    </div>
+  `;
+  let result='tragend';
+  document.getElementById('p-pill-yes').onclick=()=>{ result='tragend'; document.getElementById('p-pill-yes').classList.add('sel'); document.getElementById('p-pill-no').classList.remove('sel'); };
+  document.getElementById('p-pill-no').onclick=()=>{ result='nicht_tragend'; document.getElementById('p-pill-no').classList.add('sel'); document.getElementById('p-pill-yes').classList.remove('sel'); };
+  document.getElementById('p-cancel').onclick = closeModal;
+  document.getElementById('p-save').onclick = async ()=>{
+    const date = document.getElementById('p-date').value;
+    if(!date){ showToast('Bitte Datum angeben'); return; }
+    sow.pregCheckDate = date;
+    sow.pregCheckResult = result;
+    if(result==='nicht_tragend'){
+      sow.failedMatings = (sow.failedMatings || 0) + sow.matings.length;
+      sow.matings = [];
+      sow.pregCheckDate = null;
+      sow.pregCheckResult = null;
+      showToast('Nicht tragend – bitte in den nächsten Tagen erneut belegen');
+    } else {
+      showToast('Trächtigkeit bestätigt');
+    }
+    await persistSow(sow); closeModal(); render();
+  };
+  overlay.classList.add('open');
+}
+
+function openFarrowModal(sow){
+  modalBox.innerHTML = `
+    <h3>Abferkelung eintragen</h3>
+    <div class="field"><label>Datum</label><input type="date" id="fa-date" value="${today()}"></div>
+    <div class="field"><label>Ferkel lebend geboren</label><input type="number" min="0" id="fa-live"></div>
+    <div class="field"><label>Ferkel totgeboren</label><input type="number" min="0" id="fa-still"></div>
+    <div class="modal-btns">
+      <button class="btn-primary" id="fa-save">Speichern</button>
+      <button class="btn-secondary" id="fa-cancel">Abbrechen</button>
+    </div>
+  `;
+  document.getElementById('fa-cancel').onclick = closeModal;
+  document.getElementById('fa-save').onclick = async ()=>{
+    const date = document.getElementById('fa-date').value;
+    if(!date){ showToast('Bitte Datum angeben'); return; }
+    sow.farrowDate = date;
+    sow.pigletsLive = document.getElementById('fa-live').value || 0;
+    sow.pigletsStillborn = document.getElementById('fa-still').value || 0;
+    await persistSow(sow); closeModal(); render(); showToast('Abferkelung eingetragen');
+  };
+  overlay.classList.add('open');
+}
+
+function openTreatmentModal(sow, key){
+  const def = TREATMENTS.find(t=>t.key===key);
+  modalBox.innerHTML = `
+    <h3>${def.label} eintragen</h3>
+    <div class="field"><label>Datum</label><input type="date" id="t-date" value="${today()}"></div>
+    ${def.counts ? `
+      <div class="field"><label>Anzahl männlich</label><input type="number" min="0" id="t-male"></div>
+      <div class="field"><label>Anzahl weiblich</label><input type="number" min="0" id="t-female"></div>
+    ` : ''}
+    <div class="modal-btns">
+      <button class="btn-primary" id="t-save">Speichern</button>
+      <button class="btn-secondary" id="t-cancel">Abbrechen</button>
+    </div>
+  `;
+  document.getElementById('t-cancel').onclick = closeModal;
+  document.getElementById('t-save').onclick = async ()=>{
+    const date = document.getElementById('t-date').value;
+    if(!date){ showToast('Bitte Datum angeben'); return; }
+    sow.treatments[key].done = true;
+    sow.treatments[key].date = date;
+    if(def.counts){
+      sow.treatments[key].male = document.getElementById('t-male').value || 0;
+      sow.treatments[key].female = document.getElementById('t-female').value || 0;
+    }
+    await persistSow(sow); closeModal(); render(); showToast(def.label + ' eingetragen');
+  };
+  overlay.classList.add('open');
+}
+
+function openWeanModal(sow){
+  modalBox.innerHTML = `
+    <h3>Absetzen eintragen</h3>
+    <div class="field"><label>Datum</label><input type="date" id="w-date" value="${today()}"></div>
+    <div class="field"><label>Anzahl abgesetzter Ferkel</label><input type="number" min="0" id="w-count"></div>
+    <div class="modal-btns">
+      <button class="btn-primary" id="w-save">Speichern</button>
+      <button class="btn-secondary" id="w-cancel">Abbrechen</button>
+    </div>
+  `;
+  document.getElementById('w-cancel').onclick = closeModal;
+  document.getElementById('w-save').onclick = async ()=>{
+    const date = document.getElementById('w-date').value;
+    if(!date){ showToast('Bitte Datum angeben'); return; }
+    sow.weanDate = date;
+    sow.pigletsWeaned = document.getElementById('w-count').value || 0;
+
+    // archive cycle
+    sow.history.push({
+      cycleNumber: sow.cycleNumber, matings: sow.matings, pregCheckDate: sow.pregCheckDate,
+      pregCheckResult: sow.pregCheckResult, farrowDate: sow.farrowDate, pigletsLive: sow.pigletsLive,
+      pigletsStillborn: sow.pigletsStillborn, treatments: sow.treatments, weanDate: sow.weanDate,
+      pigletsWeaned: sow.pigletsWeaned
+    });
+    // reset for next cycle
+    sow.cycleNumber += 1;
+    sow.matings = []; sow.pregCheckDate = null; sow.pregCheckResult = null;
+    sow.farrowDate = null; sow.pigletsLive = null; sow.pigletsStillborn = null;
+    sow.treatments = blankTreatments(); sow.weanDate = null; sow.pigletsWeaned = null;
+
+    await persistSow(sow); closeModal(); render(); showToast('Abgesetzt – Zyklus zurückgesetzt');
+  };
+  overlay.classList.add('open');
+}
+
+/* ---------- event delegation for card actions ---------- */
+document.getElementById('list').addEventListener('click', async (e)=>{
+  const btn = e.target.closest('button[data-act]');
+  if(!btn) return;
+  const id = btn.dataset.id;
+  const sow = sows.find(s=>s.id===id);
+  if(!sow) return;
+  const act = btn.dataset.act;
+
+  if(act==='del'){
+    if(confirm(`${sow.name} wirklich löschen?`)){
+      sows = sows.filter(s=>s.id!==id);
+      await deleteSowRemote(id); render(); showToast('Eintrag gelöscht');
+    }
+  } else if(act==='mating'){ openMatingModal(sow); }
+  else if(act==='pregcheck'){ openPregCheckModal(sow); }
+  else if(act==='farrow'){ openFarrowModal(sow); }
+  else if(act==='wean'){ openWeanModal(sow); }
+  else if(act==='treat'){ openTreatmentModal(sow, btn.dataset.key); }
+});
+
+document.getElementById('filterRow').addEventListener('click', (e)=>{
+  const chip = e.target.closest('.chip');
+  if(!chip) return;
+  document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+  chip.classList.add('active');
+  currentFilter = chip.dataset.filter;
+  render();
+});
+
+document.getElementById('refreshBtn').addEventListener('click', async ()=>{
+  await loadSows();
+  showToast('Aktualisiert');
+});
+
+/* ---------- Auswertung ---------- */
+let currentView = 'sows';
+
+document.getElementById('viewTabs').addEventListener('click', (e)=>{
+  const btn = e.target.closest('.viewtab');
+  if(!btn) return;
+  document.querySelectorAll('.viewtab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  currentView = btn.dataset.view;
+  const showSows = currentView === 'sows';
+  document.getElementById('filterRow').style.display = showSows ? 'flex' : 'none';
+  document.getElementById('list').style.display = showSows ? 'block' : 'none';
+  document.getElementById('statsView').style.display = showSows ? 'none' : 'block';
+  if(!showSows) panel.classList.remove('open');
+  refreshCurrentView();
+});
+
+function refreshCurrentView(){
+  if(currentView === 'stats') renderStats();
+  else render();
+}
+
+function collectLitters(sowsData){
+  const out = [];
+  sowsData.forEach(s=>{
+    const items = s.history.slice();
+    if(s.farrowDate){
+      items.push({ cycleNumber: s.cycleNumber, matings: s.matings, farrowDate: s.farrowDate, pigletsLive: s.pigletsLive, pigletsStillborn: s.pigletsStillborn, weanDate: s.weanDate, pigletsWeaned: s.pigletsWeaned });
+    }
+    items.forEach(l=>{
+      const matingDate = l.matings && l.matings[0] ? l.matings[0].date : null;
+      const live = (l.pigletsLive!=null && l.pigletsLive!=='') ? Number(l.pigletsLive) : null;
+      const still = (l.pigletsStillborn!=null && l.pigletsStillborn!=='') ? Number(l.pigletsStillborn) : null;
+      const weaned = (l.pigletsWeaned!=null && l.pigletsWeaned!=='') ? Number(l.pigletsWeaned) : null;
+      out.push({
+        sowName: s.name, sowId: s.id, cycleNumber: l.cycleNumber,
+        matingDate, farrowDate: l.farrowDate, weanDate: l.weanDate,
+        live, still, weaned,
+        gestationDays: (matingDate && l.farrowDate) ? daysBetween(matingDate, l.farrowDate) : null,
+        lactationDays: (l.farrowDate && l.weanDate) ? daysBetween(l.farrowDate, l.weanDate) : null,
+      });
+    });
+  });
+  return out;
+}
+
+function computeStats(sowsData){
+  const phaseCounts = {wartet_rausche:0, im_deckzentrum:0, traechtig:0, saugend:0};
+  const birthRecords = [];   // {live, still}
+  const weanRecords = [];    // {live, weaned}
+  const sowLitterCounts = [];
+  const iwtDiffs = [];       // Produktionstage (Wurf zu Wurf)
+  const gestationDiffs = []; // Tragedauer
+  const lactationDiffs = []; // Säugedauer
+  const guestDiffs = [];     // Güstzeit (Absetzen bis nächste Belegung)
+  let totalMatings = 0;
+  let totalFailedMatings = 0;
+  const allFarrowDates = [];
+
+  sowsData.forEach(s=>{
+    phaseCounts[getPhase(s)]++;
+    totalFailedMatings += (s.failedMatings || 0);
+
+    // Sequenz aus abgeschlossenen Zyklen + laufender Belegung (auch ohne Geburt), sortiert nach Belegdatum
+    const seq = s.history.map(h=>({
+      matingDate: h.matings && h.matings[0] ? h.matings[0].date : null,
+      farrowDate: h.farrowDate, pigletsLive: h.pigletsLive, pigletsStillborn: h.pigletsStillborn,
+      weanDate: h.weanDate, pigletsWeaned: h.pigletsWeaned
+    }));
+    if(s.matings && s.matings.length){
+      seq.push({
+        matingDate: s.matings[0].date, farrowDate: s.farrowDate, pigletsLive: s.pigletsLive,
+        pigletsStillborn: s.pigletsStillborn, weanDate: s.weanDate, pigletsWeaned: s.pigletsWeaned
+      });
+    }
+    seq.sort((a,b)=> (a.matingDate||'').localeCompare(b.matingDate||''));
+
+    totalMatings += s.history.length + (s.matings ? s.matings.length : 0);
+
+    const closedLitters = s.history.slice();
+    if(s.farrowDate) closedLitters.push({ farrowDate:s.farrowDate, pigletsLive:s.pigletsLive, pigletsStillborn:s.pigletsStillborn, weanDate:s.weanDate, pigletsWeaned:s.pigletsWeaned });
+    sowLitterCounts.push(closedLitters.length);
+
+    closedLitters.forEach(l=>{
+      if(l.pigletsLive!=null && l.pigletsLive!=='') birthRecords.push({ live:Number(l.pigletsLive), still:Number(l.pigletsStillborn||0) });
+      if(l.pigletsWeaned!=null && l.pigletsWeaned!=='' && l.pigletsLive!=null) weanRecords.push({ live:Number(l.pigletsLive), weaned:Number(l.pigletsWeaned) });
+      if(l.farrowDate) allFarrowDates.push(l.farrowDate);
+    });
+
+    const farrowDatesOnly = closedLitters.filter(l=>l.farrowDate).map(l=>l.farrowDate).sort();
+    for(let i=1;i<farrowDatesOnly.length;i++) iwtDiffs.push(daysBetween(farrowDatesOnly[i-1], farrowDatesOnly[i]));
+
+    seq.forEach(e=>{
+      if(e.matingDate && e.farrowDate) gestationDiffs.push(daysBetween(e.matingDate, e.farrowDate));
+      if(e.farrowDate && e.weanDate) lactationDiffs.push(daysBetween(e.farrowDate, e.weanDate));
+    });
+    for(let i=0;i<seq.length-1;i++){
+      if(seq[i].weanDate && seq[i+1].matingDate) guestDiffs.push(daysBetween(seq[i].weanDate, seq[i+1].matingDate));
+    }
+  });
+
+  const avg = arr => arr.length ? (arr.reduce((a,b)=>a+b,0)/arr.length) : null;
+  const sum = arr => arr.reduce((a,b)=>a+b,0);
+
+  const totalLive = sum(birthRecords.map(r=>r.live));
+  const totalStill = sum(birthRecords.map(r=>r.still));
+  const totalBorn = totalLive + totalStill;
+  const totalWeaned = sum(weanRecords.map(r=>r.weaned));
+  const totalWeanLossBase = sum(weanRecords.map(r=>r.live));
+  const totalWeanLoss = totalWeanLossBase - totalWeaned;
+
+  let yearsSpan = null;
+  if(allFarrowDates.length >= 2){
+    const sorted = allFarrowDates.slice().sort();
+    yearsSpan = Math.max(daysBetween(sorted[0], sorted[sorted.length-1]) / 365.25, 0.08);
+  }
+
+  return {
+    total: sowsData.length,
+    phaseCounts,
+    avgLittersPerSow: avg(sowLitterCounts),
+    totalLitters: birthRecords.length,
+
+    avgGestation: avg(gestationDiffs),
+    avgLactation: avg(lactationDiffs),
+    avgGuest: avg(guestDiffs),
+    avgIWT: avg(iwtDiffs),
+
+    totalMatings, totalFailedMatings,
+    successRate: (totalMatings+totalFailedMatings) ? totalMatings/(totalMatings+totalFailedMatings)*100 : null,
+
+    littersPerYear: yearsSpan ? birthRecords.length/yearsSpan : null,
+    pigletsPerYear: yearsSpan ? totalBorn/yearsSpan : null,
+
+    totalBorn, avgBorn: avg(birthRecords.map(r=>r.live+r.still)),
+    totalLive, avgLive: avg(birthRecords.map(r=>r.live)), liveRate: totalBorn ? totalLive/totalBorn*100 : null,
+    totalStill, avgStill: avg(birthRecords.map(r=>r.still)), stillRate: totalBorn ? totalStill/totalBorn*100 : null,
+
+    totalWeanLoss, avgWeanLoss: avg(weanRecords.map(r=>r.live-r.weaned)),
+    weanLossRate: totalWeanLossBase ? totalWeanLoss/totalWeanLossBase*100 : null,
+
+    totalWeaned, avgWeaned: avg(weanRecords.map(r=>r.weaned)),
+    weanedPerYear: yearsSpan ? totalWeaned/yearsSpan : null,
+    psy: (avg(weanRecords.map(r=>r.weaned))!=null && avg(iwtDiffs)) ? (365/avg(iwtDiffs)) * avg(weanRecords.map(r=>r.weaned)) : null
+  };
+}
+
+function renderSowTable(sowsData){
+  const litters = collectLitters(sowsData);
+  const phaseLabels = { wartet_rausche:'Wartet', im_deckzentrum:'Deckzentrum', traechtig:'Tragend', saugend:'Säugend' };
+  const avg = arr => arr.length ? (arr.reduce((a,b)=>a+b,0)/arr.length) : null;
+  const f1 = n => n==null ? '–' : n.toFixed(1);
+  const rows = sowsData.map(s=>{
+    const mine = litters.filter(l=>l.sowId===s.id);
+    const liveArr = mine.filter(l=>l.live!=null).map(l=>l.live);
+    const stillArr = mine.filter(l=>l.still!=null).map(l=>l.still);
+    const weanedArr = mine.filter(l=>l.weaned!=null).map(l=>l.weaned);
+    const lastFarrow = mine.filter(l=>l.farrowDate).map(l=>l.farrowDate).sort().pop();
+    return `<tr>
+      <td>${s.name}</td><td>${phaseLabels[getPhase(s)]}</td><td>${mine.length}</td>
+      <td>${f1(avg(liveArr))}</td><td>${f1(avg(stillArr))}</td><td>${f1(avg(weanedArr))}</td>
+      <td>${lastFarrow ? fmt(lastFarrow) : '–'}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="stats-table-wrap"><table class="stats-table">
+    <thead><tr><th>Sau</th><th>Status</th><th>Würfe</th><th>Ø leb.</th><th>Ø tot</th><th>Ø abg.</th><th>Letzte Abferkelung</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+}
+
+function renderYearTable(sowsData){
+  const litters = collectLitters(sowsData).filter(l=>l.farrowDate);
+  const years = {};
+  litters.forEach(l=>{ const y = l.farrowDate.slice(0,4); (years[y] = years[y] || []).push(l); });
+  const avg = arr => arr.length ? (arr.reduce((a,b)=>a+b,0)/arr.length) : null;
+  const sum = arr => arr.reduce((a,b)=>a+b,0);
+  const f1 = n => n==null ? '–' : n.toFixed(1);
+  const rows = Object.keys(years).sort().map(y=>{
+    const arr = years[y];
+    const liveArr = arr.filter(l=>l.live!=null).map(l=>l.live);
+    const stillArr = arr.filter(l=>l.still!=null).map(l=>l.still);
+    const weanedArr = arr.filter(l=>l.weaned!=null).map(l=>l.weaned);
+    return `<tr>
+      <td>${y}</td><td>${arr.length}</td><td>${sum(liveArr)+sum(stillArr)}</td>
+      <td>${f1(avg(liveArr))}</td><td>${f1(avg(stillArr))}</td>
+      <td>${sum(weanedArr)}</td><td>${f1(avg(weanedArr))}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="stats-table-wrap"><table class="stats-table">
+    <thead><tr><th>Jahr</th><th>Würfe</th><th>Ferkel ges.</th><th>Ø leb.</th><th>Ø tot</th><th>Abgesetzt ges.</th><th>Ø abg.</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+}
+
+function renderLitterTable(sowsData){
+  const litters = collectLitters(sowsData).filter(l=>l.farrowDate).sort((a,b)=> b.farrowDate.localeCompare(a.farrowDate));
+  const rows = litters.map(l=>`<tr>
+    <td>${l.sowName}</td><td>${l.cycleNumber ?? '–'}</td><td>${fmt(l.farrowDate)}</td>
+    <td>${l.live ?? '–'}</td><td>${l.still ?? '–'}</td>
+    <td>${l.weanDate ? fmt(l.weanDate) : '–'}</td><td>${l.weaned ?? '–'}</td>
+    <td>${l.gestationDays ?? '–'}</td><td>${l.lactationDays ?? '–'}</td>
+  </tr>`).join('');
+  return `<div class="stats-table-wrap"><table class="stats-table">
+    <thead><tr><th>Sau</th><th>Wurf</th><th>Abferkelung</th><th>Leb.</th><th>Tot</th><th>Absetzen</th><th>Abg.</th><th>Tragetage</th><th>Säugetage</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+}
+
+let statsMode = 'gesamt';
+
+function renderStats(){
+  const el = document.getElementById('statsView');
+  if(!sows.length){
+    el.innerHTML = `<div class="empty"><div class="big">Noch keine Daten</div>Sobald Sauen erfasst sind, erscheint hier die Auswertung.</div>`;
+    return;
+  }
+  const st = computeStats(sows);
+  const f1 = n => n==null ? '–' : n.toFixed(1);
+  const f0 = n => n==null ? '–' : Math.round(n);
+  const fPct = n => n==null ? '–' : n.toFixed(1)+'%';
+  const phaseLabels = { wartet_rausche:'Wartet auf Rausche', im_deckzentrum:'Deckzentrum', traechtig:'Tragend', saugend:'Säugend' };
+  const maxPhase = Math.max(1, ...Object.values(st.phaseCounts));
+
+  let detailHtml = '';
+  if(statsMode === 'sau'){
+    detailHtml = `<div class="stat-section"><h3>Je Sau</h3>${renderSowTable(sows)}</div>`;
+  } else if(statsMode === 'jahr'){
+    detailHtml = `<div class="stat-section"><h3>Je Jahr</h3>${renderYearTable(sows)}</div>`;
+  } else if(statsMode === 'wurf'){
+    detailHtml = `<div class="stat-section"><h3>Je Wurf</h3>${renderLitterTable(sows)}</div>`;
+  } else {
+    detailHtml = `
+    <div class="stat-section">
+      <h3>Wichtigste Kennzahlen</h3>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-value">${f0(st.avgLactation)}</div><div class="stat-label">Ø Säugezeit (Tage)</div></div>
+        <div class="stat-card"><div class="stat-value">${st.totalBorn}</div><div class="stat-label">Gesamt geborene Ferkel</div></div>
+        <div class="stat-card"><div class="stat-value">${f1(st.avgBorn)}</div><div class="stat-label">Ø geborene Ferkel je Wurf</div></div>
+        <div class="stat-card"><div class="stat-value">${st.totalStill}</div><div class="stat-label">Tote Ferkel</div></div>
+        <div class="stat-card"><div class="stat-value">${f0(st.weanedPerYear)}</div><div class="stat-label">Abgesetzte Ferkel / Jahr</div></div>
+        <div class="stat-card"><div class="stat-value">${f1(st.avgWeaned)}</div><div class="stat-label">Abgesetzte Ferkel / Wurf</div></div>
+        <div class="stat-card"><div class="stat-value">${f1(st.psy)}</div><div class="stat-label">Abgesetzte Ferkel / Sau / Jahr</div></div>
+      </div>
+    </div>`;
+  }
+
+  el.innerHTML = `
+    <div class="stat-section">
+      <h3>Bestand</h3>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-value">${st.total}</div><div class="stat-label">Sauen gesamt</div></div>
+        <div class="stat-card"><div class="stat-value">${f1(st.avgLittersPerSow)}</div><div class="stat-label">Ø Würfe je Sau</div></div>
+      </div>
+      <div class="barlist" style="margin-top:12px;">
+        ${Object.entries(st.phaseCounts).map(([k,v])=>`
+          <div class="barrow">
+            <span class="barlabel">${phaseLabels[k]}</span>
+            <span class="bartrack"><span class="barfill" style="width:${(v/maxPhase*100)}%"></span></span>
+            <span class="barcount">${v}</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+
+    <div class="filterrow" id="statsSubTabs">
+      <button class="chip ${statsMode==='gesamt'?'active':''}" data-mode="gesamt">Gesamt</button>
+      <button class="chip ${statsMode==='sau'?'active':''}" data-mode="sau">Je Sau</button>
+      <button class="chip ${statsMode==='jahr'?'active':''}" data-mode="jahr">Je Jahr</button>
+      <button class="chip ${statsMode==='wurf'?'active':''}" data-mode="wurf">Je Wurf</button>
+    </div>
+
+    ${detailHtml}
+  `;
+
+  document.getElementById('statsSubTabs').addEventListener('click', (e)=>{
+    const chip = e.target.closest('.chip');
+    if(!chip) return;
+    statsMode = chip.dataset.mode;
+    renderStats();
+  });
+}
+
+loadSows();
+setInterval(loadSows, 20000);
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) loadSows(); });
+</script>
+</body>
+</html>
