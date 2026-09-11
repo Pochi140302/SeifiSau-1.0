@@ -831,10 +831,11 @@ document.getElementById('viewTabs').addEventListener('click', (e)=>{
   const showStats = currentView === 'stats';
   const showPlan = currentView === 'plan';
   document.getElementById('filterRow').style.display = showSows ? 'flex' : 'none';
+  document.getElementById('sowViewToggle').style.display = showSows ? 'flex' : 'none';
   document.getElementById('list').style.display = showSows ? 'block' : 'none';
   document.getElementById('statsView').style.display = showStats ? 'block' : 'none';
   document.getElementById('planView').style.display = showPlan ? 'block' : 'none';
-  if(!showSows) panel.classList.remove('open');
+  if(!showSows) { panel.classList.remove('open'); document.getElementById('sowsTableView').style.display = 'none'; }
   if(showPlan) initPlanRange();
   refreshCurrentView();
 });
