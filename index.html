@@ -392,22 +392,35 @@ function computeCard(sow){
   let rows=[], statusClass='', statusLabel='', sortDate=today();
 
   if(phase==='wartet_rausche'){
-    let expHeat;
+    let expHeat = null;
     if(sow.history.length===0){
-      expHeat = addDays(sow.purchaseDate, FIRST_HEAT_AFTER_ARRIVAL);
-      rows.push(`Zugekauft als <b>Jungsau</b> am ${fmt(sow.purchaseDate)}`);
+      if(sow.purchaseDate){
+        expHeat = addDays(sow.purchaseDate, FIRST_HEAT_AFTER_ARRIVAL);
+        rows.push(`Zugekauft als <b>Jungsau</b> am ${fmt(sow.purchaseDate)}`);
+        rows.push(`Erste Rausche erwartet ab: <b>${fmt(expHeat)}</b>`);
+      } else {
+        rows.push(`Kein Zukaufsdatum hinterlegt`);
+      }
     } else {
       const lastWean = sow.history[sow.history.length-1].weanDate;
-      expHeat = addDays(lastWean, SERVICE_WINDOW_START);
-      const expHeatEnd = addDays(lastWean, SERVICE_WINDOW_END);
-      rows.push(`Zuletzt abgesetzt: <b>${fmt(lastWean)}</b>`);
-      rows.push(`Erwartete Rausche: <b>${fmt(expHeat)} – ${fmt(expHeatEnd)}</b>`);
+      if(lastWean){
+        expHeat = addDays(lastWean, SERVICE_WINDOW_START);
+        const expHeatEnd = addDays(lastWean, SERVICE_WINDOW_END);
+        rows.push(`Zuletzt abgesetzt: <b>${fmt(lastWean)}</b>`);
+        rows.push(`Erwartete Rausche: <b>${fmt(expHeat)} – ${fmt(expHeatEnd)}</b>`);
+      } else {
+        rows.push(`Zyklushistorie ohne Absetzdatum`);
+      }
     }
-    if(sow.history.length===0) rows.push(`Erste Rausche erwartet ab: <b>${fmt(expHeat)}</b>`);
-    const d = daysBetween(today(), expHeat);
-    statusClass = d<=0 ? 'now' : (d<=3 ? 'soon' : '');
-    statusLabel = d<=0 ? 'Rausche / Deckung fällig' : `Rausche in ~${d} Tg.`;
-    sortDate = expHeat;
+    if(expHeat){
+      const d = daysBetween(today(), expHeat);
+      statusClass = d<=0 ? 'now' : (d<=3 ? 'soon' : '');
+      statusLabel = d<=0 ? 'Rausche / Deckung fällig' : `Rausche in ~${d} Tg.`;
+      sortDate = expHeat;
+    } else {
+      statusClass = '';
+      statusLabel = 'Ohne Termin';
+    }
   }
 
   else if(phase==='im_deckzentrum'){
@@ -501,7 +514,14 @@ function render(){
     return;
   }
 
-  const computed = filtered.map(s=>({sow:s, info:computeCard(s)}));
+  const computed = [];
+  filtered.forEach(s=>{
+    try{ computed.push({ sow:s, info: computeCard(s) }); }
+    catch(e){
+      console.error('Sauenliste: Fehler bei Sau', s.name, e);
+      computed.push({ sow:s, info: { phase:getPhase(s), rows:['Fehler bei der Berechnung – Datensatz prüfen'], statusClass:'', statusLabel:'Fehler', sortDate: today() } });
+    }
+  });
   computed.sort((a,b)=> new Date(a.info.sortDate) - new Date(b.info.sortDate));
 
   computed.forEach(({sow, info})=>{
