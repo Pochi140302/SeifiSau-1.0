@@ -439,13 +439,19 @@ function computeCard(sow){
     const pruefAb = addDays(fmd, PRUEFUNG_AB_TAG);
     sow.matings.forEach((m,i)=>{
       const methodLabel = m.method==='natursprung' ? 'Natursprung' : (m.method==='besamung' ? `Besamung (Eber: ${m.eberName||'–'} / ${m.eberNummer||'–'})` : m.method);
-      rows.push(`Deckung ${i+1}: <b>${fmt(m.date)}</b> – ${methodLabel}`);
+      const ngTag = m.ng ? ' <b style="color:var(--alert);">NG</b>' : '';
+      rows.push(`Deckung ${i+1}: <b>${fmt(m.date)}</b> – ${methodLabel}${ngTag}`);
     });
     rows.push(`Anzahl Deckungen: <b>${sow.matings.length}</b>`);
     rows.push(`Trächtigkeitsprüfung möglich ab: <b>${fmt(pruefAb)}</b>`);
     const d = daysBetween(today(), pruefAb);
-    statusClass = d<=0 ? 'now' : (d<=3 ? 'soon' : 'deck');
-    statusLabel = d<=0 ? 'Prüfung fällig' : `Prüfung in ~${d} Tg.`;
+    if(sow.matings.length >= 4){
+      statusClass = 'now';
+      statusLabel = `${sow.matings.length}× belegt – prüfen!`;
+    } else {
+      statusClass = d<=0 ? 'now' : (d<=3 ? 'soon' : 'deck');
+      statusLabel = d<=0 ? 'Prüfung fällig' : `Prüfung in ~${d} Tg.`;
+    }
     sortDate = pruefAb;
   }
 
@@ -664,6 +670,12 @@ function openMatingModal(sow){
       <div class="field"><label>Name des Ebers</label><input type="text" id="m-ebername" placeholder="z. B. Max"></div>
       <div class="field"><label>Nummer des Ebers</label><input type="text" id="m-ebernummer" placeholder="z. B. 1042"></div>
     </div>
+    <div class="field">
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+        <input type="checkbox" id="m-ng" style="width:auto;">
+        NG – Nachgebärt (Sau ist zurückgekommen, wird erneut belegt)
+      </label>
+    </div>
     <div class="modal-btns">
       <button class="btn-primary" id="m-save">Speichern</button>
       <button class="btn-secondary" id="m-cancel">Abbrechen</button>
@@ -676,7 +688,8 @@ function openMatingModal(sow){
   document.getElementById('m-save').onclick = async ()=>{
     const date = document.getElementById('m-date').value;
     if(!date){ showToast('Bitte Datum angeben'); return; }
-    const mating = { date, method, eberName:'', eberNummer:'' };
+    const ng = document.getElementById('m-ng').checked;
+    const mating = { date, method, eberName:'', eberNummer:'', ng };
     if(method==='besamung'){
       mating.eberName = document.getElementById('m-ebername').value.trim();
       mating.eberNummer = document.getElementById('m-ebernummer').value.trim();
@@ -808,12 +821,19 @@ function openEditSowModal(sow){
         <div class="field"><label>Eber Name</label><input type="text" class="em-ebername" data-i="${i}" value="${m.eberName||''}"></div>
         <div class="field"><label>Eber Nummer</label><input type="text" class="em-ebernummer" data-i="${i}" value="${m.eberNummer||''}"></div>
       </div>
+      <div class="field" style="margin-bottom:14px;">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="checkbox" class="em-ng" data-i="${i}" style="width:auto;" ${m.ng?'checked':''}>
+          NG – Nachgebärt
+        </label>
+      </div>
     `).join('') || '<div class="stat-note">Keine Deckung erfasst.</div>';
 
     wrap.querySelectorAll('.em-date').forEach(el=>el.onchange = ()=>{ workingMatings[el.dataset.i].date = el.value; });
     wrap.querySelectorAll('.em-method').forEach(el=>el.onchange = ()=>{ workingMatings[el.dataset.i].method = el.value; });
     wrap.querySelectorAll('.em-ebername').forEach(el=>el.onchange = ()=>{ workingMatings[el.dataset.i].eberName = el.value; });
     wrap.querySelectorAll('.em-ebernummer').forEach(el=>el.onchange = ()=>{ workingMatings[el.dataset.i].eberNummer = el.value; });
+    wrap.querySelectorAll('.em-ng').forEach(el=>el.onchange = ()=>{ workingMatings[el.dataset.i].ng = el.checked; });
     wrap.querySelectorAll('.em-remove').forEach(el=>el.onclick = ()=>{ workingMatings.splice(Number(el.dataset.i),1); renderMatingsRows(); });
   }
 
@@ -938,7 +958,7 @@ function openEditSowModal(sow){
     sow.tattoo = document.getElementById('e-tattoo').value.trim();
     sow.cycleNumber = Number(document.getElementById('e-cycle').value) || sow.cycleNumber;
 
-    sow.matings = workingMatings.filter(m=>m.date).map(m=>({ date:m.date, method:m.method, eberName:m.eberName||'', eberNummer:m.eberNummer||'' }));
+    sow.matings = workingMatings.filter(m=>m.date).map(m=>({ date:m.date, method:m.method, eberName:m.eberName||'', eberNummer:m.eberNummer||'', ng: !!m.ng }));
 
     sow.pregCheckDate = document.getElementById('e-pcdate').value || null;
     sow.pregCheckResult = document.getElementById('e-pcresult').value || null;
