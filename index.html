@@ -185,6 +185,11 @@
     <button class="chip" data-mode="table">Tabelle (alle Sauen)</button>
   </div>
 
+  <div class="filterrow" id="cardSortRow">
+    <button class="chip active" data-sort="termin">Nach Termin</button>
+    <button class="chip" data-sort="nummer">Nach Nummer</button>
+  </div>
+
   <div class="panel" id="addPanel">
     <h2>Neue Sau eintragen</h2>
     <div class="field"><label>Name / Ohrmarke</label><input type="text" id="f-name" placeholder="z. B. 214 oder Bertha"></div>
@@ -522,6 +527,8 @@ function historyHtml(sow){
 function firstMatingDateFrom(h){ if(!h.matings || !h.matings.length) return null; return h.matings.map(m=>m.date).sort()[0]; }
 
 let sowViewMode = 'cards';
+let cardSortMode = 'termin';
+let cardSortDir = 'asc';
 
 function render(){
   const list = document.getElementById('list');
@@ -553,7 +560,12 @@ function render(){
       computed.push({ sow:s, info: { phase:getPhase(s), rows:['Fehler bei der Berechnung – Datensatz prüfen'], statusClass:'', statusLabel:'Fehler', sortDate: today() } });
     }
   });
-  computed.sort((a,b)=> new Date(a.info.sortDate) - new Date(b.info.sortDate));
+  if(cardSortMode === 'nummer'){
+    const mult = cardSortDir === 'asc' ? 1 : -1;
+    computed.sort((a,b)=> a.sow.name.localeCompare(b.sow.name, undefined, {numeric:true}) * mult);
+  } else {
+    computed.sort((a,b)=> new Date(a.info.sortDate) - new Date(b.info.sortDate));
+  }
 
   computed.forEach(({sow, info})=>{
     const card = document.createElement('div');
@@ -1077,6 +1089,26 @@ document.getElementById('sowViewToggle').addEventListener('click', (e)=>{
   document.querySelectorAll('#sowViewToggle .chip').forEach(c=>c.classList.remove('active'));
   chip.classList.add('active');
   sowViewMode = chip.dataset.mode;
+  document.getElementById('cardSortRow').style.display = sowViewMode === 'cards' ? 'flex' : 'none';
+  render();
+});
+
+document.getElementById('cardSortRow').addEventListener('click', (e)=>{
+  const chip = e.target.closest('.chip');
+  if(!chip) return;
+  const mode = chip.dataset.sort;
+  if(mode === 'nummer' && cardSortMode === 'nummer'){
+    cardSortDir = cardSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    cardSortMode = mode;
+    if(mode === 'nummer') cardSortDir = 'asc';
+  }
+  document.querySelectorAll('#cardSortRow .chip').forEach(c=>{
+    c.classList.remove('active');
+    if(c.dataset.sort === 'nummer') c.textContent = 'Nach Nummer';
+  });
+  chip.classList.add('active');
+  if(mode === 'nummer') chip.textContent = `Nach Nummer ${cardSortDir === 'asc' ? '▲' : '▼'}`;
   render();
 });
 
@@ -1112,6 +1144,7 @@ document.getElementById('viewTabs').addEventListener('click', (e)=>{
   const showPlan = currentView === 'plan';
   document.getElementById('filterRow').style.display = showSows ? 'flex' : 'none';
   document.getElementById('sowViewToggle').style.display = showSows ? 'flex' : 'none';
+  document.getElementById('cardSortRow').style.display = showSows ? 'flex' : 'none';
   document.getElementById('list').style.display = showSows ? 'block' : 'none';
   document.getElementById('statsView').style.display = showStats ? 'block' : 'none';
   document.getElementById('planView').style.display = showPlan ? 'block' : 'none';
