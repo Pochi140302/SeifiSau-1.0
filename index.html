@@ -172,6 +172,10 @@
     <button class="viewtab" data-view="plan">Arbeitsplan</button>
   </div>
 
+  <div class="field" id="searchWrap" style="margin-bottom:12px;">
+    <input type="text" id="searchBox" placeholder="Sau suchen (Nummer / Ohrmarke) …">
+  </div>
+
   <div class="filterrow" id="filterRow">
     <button class="chip active" data-filter="all">Alle</button>
     <button class="chip" data-filter="wartet_rausche">Wartet auf Rausche</button>
@@ -264,6 +268,7 @@ const TREATMENTS = [
 
 let sows = [];
 let currentFilter = 'all';
+let searchTerm = '';
 
 function fmt(d){ if(!d) return '–'; const dt = new Date(d+'T00:00:00'); return dt.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}); }
 function addDays(dateStr, days){ const d = new Date(dateStr+'T00:00:00'); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); }
@@ -534,11 +539,15 @@ function render(){
   const list = document.getElementById('list');
   const tableEl = document.getElementById('sowsTableView');
   let filtered = sows.filter(s => currentFilter==='all' || getPhase(s)===currentFilter);
+  if(searchTerm){
+    const term = searchTerm.toLowerCase();
+    filtered = filtered.filter(s => s.name.toLowerCase().includes(term));
+  }
 
   if(filtered.length===0){
     list.style.display = 'block';
     tableEl.style.display = 'none';
-    list.innerHTML = `<div class="empty"><div class="big">Noch keine Einträge</div>Trag deine erste Sau ein, um den kompletten Zyklus zu verfolgen.</div>`;
+    list.innerHTML = `<div class="empty"><div class="big">${searchTerm ? 'Keine Treffer' : 'Noch keine Einträge'}</div>${searchTerm ? 'Keine Sau mit dieser Nummer gefunden.' : 'Trag deine erste Sau ein, um den kompletten Zyklus zu verfolgen.'}</div>`;
     return;
   }
 
@@ -565,6 +574,14 @@ function render(){
     computed.sort((a,b)=> a.sow.name.localeCompare(b.sow.name, undefined, {numeric:true}) * mult);
   } else {
     computed.sort((a,b)=> new Date(a.info.sortDate) - new Date(b.info.sortDate));
+  }
+  if(searchTerm){
+    const term = searchTerm.toLowerCase();
+    computed.sort((a,b)=>{
+      const aExact = a.sow.name.toLowerCase() === term ? 0 : 1;
+      const bExact = b.sow.name.toLowerCase() === term ? 0 : 1;
+      return aExact - bExact;
+    });
   }
 
   computed.forEach(({sow, info})=>{
@@ -625,6 +642,14 @@ function renderSowsBioTable(filtered){
     if(key === 'cycleNumber') return (va - vb) * mult;
     return String(va).localeCompare(String(vb), undefined, { numeric:true }) * mult;
   });
+  if(searchTerm){
+    const term = searchTerm.toLowerCase();
+    rowData.sort((a,b)=>{
+      const aExact = a.name.toLowerCase() === term ? 0 : 1;
+      const bExact = b.name.toLowerCase() === term ? 0 : 1;
+      return aExact - bExact;
+    });
+  }
 
   const columns = [
     { key:'name', label:'Ohrmarke' },
@@ -1130,6 +1155,11 @@ document.getElementById('refreshBtn').addEventListener('click', async ()=>{
   showToast('Aktualisiert');
 });
 
+document.getElementById('searchBox').addEventListener('input', (e)=>{
+  searchTerm = e.target.value.trim();
+  render();
+});
+
 /* ---------- Auswertung ---------- */
 let currentView = 'sows';
 
@@ -1145,6 +1175,7 @@ document.getElementById('viewTabs').addEventListener('click', (e)=>{
   document.getElementById('filterRow').style.display = showSows ? 'flex' : 'none';
   document.getElementById('sowViewToggle').style.display = showSows ? 'flex' : 'none';
   document.getElementById('cardSortRow').style.display = showSows ? 'flex' : 'none';
+  document.getElementById('searchWrap').style.display = showSows ? 'block' : 'none';
   document.getElementById('list').style.display = showSows ? 'block' : 'none';
   document.getElementById('statsView').style.display = showStats ? 'block' : 'none';
   document.getElementById('planView').style.display = showPlan ? 'block' : 'none';
