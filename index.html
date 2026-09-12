@@ -189,6 +189,7 @@
     <div class="field"><label>Geburtsdatum der Sau</label><input type="date" id="f-birth"></div>
     <div class="field"><label>Zukaufsdatum</label><input type="date" id="f-purchase"></div>
     <div class="field"><label>Züchter</label><input type="text" id="f-breeder" placeholder="Name des Züchters/Betriebs"></div>
+    <div class="field"><label>Tätowierung (optional)</label><input type="text" id="f-tattoo" placeholder="falls abweichend von Ohrmarke"></div>
     <div class="field">
       <label>Status bei Zukauf</label>
       <div class="radiorow">
@@ -351,6 +352,7 @@ function clearAddForm(){
   document.getElementById('f-birth').value='';
   document.getElementById('f-purchbreed').value='';
   document.getElementById('f-breeder').value='';
+  document.getElementById('f-tattoo').value='';
   setPurchStatus('jungsau');
 }
 document.getElementById('saveNew').addEventListener('click', async ()=>{
@@ -358,9 +360,10 @@ document.getElementById('saveNew').addEventListener('click', async ()=>{
   const birth = document.getElementById('f-birth').value;
   const purchase = document.getElementById('f-purchase').value;
   const breeder = document.getElementById('f-breeder').value.trim();
+  const tattoo = document.getElementById('f-tattoo').value.trim();
   if(!name || !purchase){ showToast('Bitte mindestens Name und Zukaufsdatum angeben'); return; }
   const sow = {
-    id: uid(), name, birthDate: birth, breed:'F1', purchaseDate: purchase, breederName: breeder,
+    id: uid(), name, birthDate: birth, breed:'F1', purchaseDate: purchase, breederName: breeder, tattoo: tattoo,
     purchaseStatus: purchaseStatusVal, cycleNumber: 1,
     matings: [], pregCheckDate:null, pregCheckResult:null,
     farrowDate:null, pigletsLive:null, pigletsStillborn:null,
@@ -557,6 +560,7 @@ function render(){
     }
     if(info.phase==='traechtig') actions += `<button data-act="farrow" data-id="${sow.id}">Abferkelung eintragen</button>`;
     if(info.phase==='saugend') actions += `<button data-act="wean" data-id="${sow.id}">Absetzen eintragen</button>`;
+    actions += `<button data-act="edit" data-id="${sow.id}" class="ghost">Bearbeiten</button>`;
     actions += `<button data-act="del" data-id="${sow.id}" class="del">Löschen</button>`;
 
     card.innerHTML = `
@@ -567,7 +571,7 @@ function render(){
         </div>
         <span class="status-tag ${info.statusClass}">${info.statusLabel}</span>
       </div>
-      <div class="biorow">${sow.breed} · geboren ${fmt(sow.birthDate)}${sow.breederName ? ' · Züchter: ' + sow.breederName : ''}</div>
+      <div class="biorow">${sow.breed} · geboren ${fmt(sow.birthDate)}${sow.tattoo ? ' · Tät.: ' + sow.tattoo : ''}${sow.breederName ? ' · Züchter: ' + sow.breederName : ''}</div>
       <div class="rows">${info.rows.join('<br>')}</div>
       ${treatmentRowHtml(sow)}
       ${historyHtml(sow)}
@@ -586,6 +590,7 @@ function renderSowsBioTable(filtered){
     const lastFarrow = hist.filter(h=>h.farrowDate).map(h=>h.farrowDate).sort().pop();
     return `<tr>
       <td>${s.name}</td>
+      <td>${s.tattoo || '–'}</td>
       <td>${s.breed || '–'}</td>
       <td>${s.birthDate ? fmt(s.birthDate) : '–'}</td>
       <td>${phaseLabels[getPhase(s)] || '–'}</td>
@@ -597,7 +602,7 @@ function renderSowsBioTable(filtered){
   }).join('');
   return `<div class="stats-table-wrap"><table class="stats-table">
     <thead><tr>
-      <th>Ohrmarke</th><th>Rasse</th><th>Geb.datum</th><th>Status</th><th>Zyklus</th>
+      <th>Ohrmarke</th><th>Tät.</th><th>Rasse</th><th>Geb.datum</th><th>Status</th><th>Zyklus</th>
       <th>Letzte Ferkelung</th><th>Zugangsdatum</th><th>Lieferant</th>
     </tr></thead>
     <tbody>${rows}</tbody>
@@ -739,6 +744,213 @@ function openTreatmentModal(sow, key){
   overlay.classList.add('open');
 }
 
+function openEditSowModal(sow){
+  let workingMatings = (sow.matings || []).map(m=>({ ...m }));
+  let workingHistory = (sow.history || []).map(h=>({
+    cycleNumber: h.cycleNumber,
+    matingDate: h.matings && h.matings[0] ? h.matings[0].date : '',
+    matingMethod: h.matings && h.matings[0] ? h.matings[0].method : 'natursprung',
+    eberName: h.matings && h.matings[0] ? h.matings[0].eberName || '' : '',
+    eberNummer: h.matings && h.matings[0] ? h.matings[0].eberNummer || '' : '',
+    farrowDate: h.farrowDate || '', pigletsLive: h.pigletsLive, pigletsStillborn: h.pigletsStillborn,
+    weanDate: h.weanDate || '', pigletsWeaned: h.pigletsWeaned,
+    treatments: h.treatments || blankTreatments()
+  }));
+
+  function methodOptionsHtml(selected){
+    const opts = [['natursprung','Natursprung'],['besamung','Besamung'],['zukauf_traechtig','Bei Zukauf gedeckt']];
+    return opts.map(([v,l])=>`<option value="${v}" ${selected===v?'selected':''}>${l}</option>`).join('');
+  }
+
+  function renderMatingsRows(){
+    const wrap = document.getElementById('e-matings-list');
+    wrap.innerHTML = workingMatings.map((m,i)=>`
+      <div class="field-row" style="align-items:flex-end;">
+        <div class="field"><label>Deckdatum ${i+1}</label><input type="date" class="em-date" data-i="${i}" value="${m.date||''}"></div>
+        <div class="field"><label>Art</label><select class="em-method" data-i="${i}">${methodOptionsHtml(m.method)}</select></div>
+        <button type="button" class="btn-secondary em-remove" data-i="${i}" style="flex:none;">✕</button>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Eber Name</label><input type="text" class="em-ebername" data-i="${i}" value="${m.eberName||''}"></div>
+        <div class="field"><label>Eber Nummer</label><input type="text" class="em-ebernummer" data-i="${i}" value="${m.eberNummer||''}"></div>
+      </div>
+    `).join('') || '<div class="stat-note">Keine Deckung erfasst.</div>';
+
+    wrap.querySelectorAll('.em-date').forEach(el=>el.onchange = ()=>{ workingMatings[el.dataset.i].date = el.value; });
+    wrap.querySelectorAll('.em-method').forEach(el=>el.onchange = ()=>{ workingMatings[el.dataset.i].method = el.value; });
+    wrap.querySelectorAll('.em-ebername').forEach(el=>el.onchange = ()=>{ workingMatings[el.dataset.i].eberName = el.value; });
+    wrap.querySelectorAll('.em-ebernummer').forEach(el=>el.onchange = ()=>{ workingMatings[el.dataset.i].eberNummer = el.value; });
+    wrap.querySelectorAll('.em-remove').forEach(el=>el.onclick = ()=>{ workingMatings.splice(Number(el.dataset.i),1); renderMatingsRows(); });
+  }
+
+  function renderHistoryRows(){
+    const wrap = document.getElementById('e-history-list');
+    wrap.innerHTML = workingHistory.map((h,i)=>`
+      <div class="panel open" style="margin-bottom:10px; padding:14px;">
+        <div class="biorow" style="margin-bottom:8px;">Zyklus ${h.cycleNumber ?? '–'}</div>
+        <div class="field-row">
+          <div class="field"><label>Deckdatum</label><input type="date" class="eh-matingdate" data-i="${i}" value="${h.matingDate||''}"></div>
+          <div class="field"><label>Art</label><select class="eh-method" data-i="${i}">${methodOptionsHtml(h.matingMethod)}</select></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Abferkeldatum</label><input type="date" class="eh-farrow" data-i="${i}" value="${h.farrowDate||''}"></div>
+          <div class="field"><label>Lebend</label><input type="number" class="eh-live" data-i="${i}" value="${h.pigletsLive??''}"></div>
+          <div class="field"><label>Tot</label><input type="number" class="eh-still" data-i="${i}" value="${h.pigletsStillborn??''}"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Absetzdatum</label><input type="date" class="eh-wean" data-i="${i}" value="${h.weanDate||''}"></div>
+          <div class="field"><label>Abgesetzt</label><input type="number" class="eh-weaned" data-i="${i}" value="${h.pigletsWeaned??''}"></div>
+        </div>
+        <button type="button" class="btn-secondary eh-remove" data-i="${i}">Diesen Zyklus löschen</button>
+      </div>
+    `).join('') || '<div class="stat-note">Noch keine abgeschlossenen Zyklen.</div>';
+
+    wrap.querySelectorAll('.eh-matingdate').forEach(el=>el.onchange = ()=>{ workingHistory[el.dataset.i].matingDate = el.value; });
+    wrap.querySelectorAll('.eh-method').forEach(el=>el.onchange = ()=>{ workingHistory[el.dataset.i].matingMethod = el.value; });
+    wrap.querySelectorAll('.eh-farrow').forEach(el=>el.onchange = ()=>{ workingHistory[el.dataset.i].farrowDate = el.value; });
+    wrap.querySelectorAll('.eh-live').forEach(el=>el.onchange = ()=>{ workingHistory[el.dataset.i].pigletsLive = el.value; });
+    wrap.querySelectorAll('.eh-still').forEach(el=>el.onchange = ()=>{ workingHistory[el.dataset.i].pigletsStillborn = el.value; });
+    wrap.querySelectorAll('.eh-wean').forEach(el=>el.onchange = ()=>{ workingHistory[el.dataset.i].weanDate = el.value; });
+    wrap.querySelectorAll('.eh-weaned').forEach(el=>el.onchange = ()=>{ workingHistory[el.dataset.i].pigletsWeaned = el.value; });
+    wrap.querySelectorAll('.eh-remove').forEach(el=>el.onclick = ()=>{ workingHistory.splice(Number(el.dataset.i),1); renderHistoryRows(); });
+  }
+
+  modalBox.innerHTML = `
+    <h3>Sau bearbeiten: ${sow.name}</h3>
+
+    <div class="biorow" style="margin:2px 0 10px;">Stammdaten</div>
+    <div class="field"><label>Name / Ohrmarke</label><input type="text" id="e-name" value="${sow.name}"></div>
+    <div class="field-row">
+      <div class="field"><label>Geburtsdatum</label><input type="date" id="e-birth" value="${sow.birthDate||''}"></div>
+      <div class="field"><label>Zukaufsdatum</label><input type="date" id="e-purchase" value="${sow.purchaseDate||''}"></div>
+    </div>
+    <div class="field"><label>Züchter</label><input type="text" id="e-breeder" value="${sow.breederName||''}"></div>
+    <div class="field"><label>Tätowierung</label><input type="text" id="e-tattoo" value="${sow.tattoo||''}"></div>
+    <div class="field"><label>Zyklusnummer (aktuell)</label><input type="number" id="e-cycle" value="${sow.cycleNumber}"></div>
+
+    <div class="biorow" style="margin:16px 0 10px;">Aktuelle Deckung(en)</div>
+    <div id="e-matings-list"></div>
+    <button type="button" class="btn-secondary" id="e-add-mating">+ Deckung hinzufügen</button>
+
+    <div class="biorow" style="margin:16px 0 10px;">Trächtigkeitsprüfung (aktuell)</div>
+    <div class="field-row">
+      <div class="field"><label>Datum</label><input type="date" id="e-pcdate" value="${sow.pregCheckDate||''}"></div>
+      <div class="field"><label>Ergebnis</label>
+        <select id="e-pcresult">
+          <option value="">–</option>
+          <option value="tragend" ${sow.pregCheckResult==='tragend'?'selected':''}>Tragend</option>
+          <option value="nicht_tragend" ${sow.pregCheckResult==='nicht_tragend'?'selected':''}>Nicht tragend</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="biorow" style="margin:16px 0 10px;">Abferkelung (aktuell)</div>
+    <div class="field-row">
+      <div class="field"><label>Datum</label><input type="date" id="e-farrow" value="${sow.farrowDate||''}"></div>
+      <div class="field"><label>Lebend</label><input type="number" id="e-live" value="${sow.pigletsLive??''}"></div>
+      <div class="field"><label>Tot</label><input type="number" id="e-still" value="${sow.pigletsStillborn??''}"></div>
+    </div>
+
+    <div class="biorow" style="margin:16px 0 10px;">Absetzen (aktuell)</div>
+    <div class="field-row">
+      <div class="field"><label>Datum</label><input type="date" id="e-wean" value="${sow.weanDate||''}"></div>
+      <div class="field"><label>Abgesetzt</label><input type="number" id="e-weaned" value="${sow.pigletsWeaned??''}"></div>
+    </div>
+
+    <div class="biorow" style="margin:16px 0 10px;">Behandlungen (aktueller Wurf)</div>
+    ${TREATMENTS.map(t=>{
+      const rec = sow.treatments[t.key] || {};
+      return `<div class="field-row">
+        <div class="field"><label>${t.label} – Datum</label><input type="date" class="e-treat-date" data-key="${t.key}" value="${rec.date||''}"></div>
+        ${t.counts ? `
+        <div class="field"><label>männl.</label><input type="number" class="e-treat-male" data-key="${t.key}" value="${rec.male??''}"></div>
+        <div class="field"><label>weibl.</label><input type="number" class="e-treat-female" data-key="${t.key}" value="${rec.female??''}"></div>` : ''}
+      </div>`;
+    }).join('')}
+
+    <div class="biorow" style="margin:16px 0 10px;">Bisherige Zyklen (Verlauf)</div>
+    <div id="e-history-list"></div>
+    <button type="button" class="btn-secondary" id="e-add-history">+ Zyklus zum Verlauf hinzufügen</button>
+
+    <div class="modal-btns">
+      <button class="btn-primary" id="e-save">Speichern</button>
+      <button class="btn-secondary" id="e-cancel">Abbrechen</button>
+    </div>
+  `;
+
+  renderMatingsRows();
+  renderHistoryRows();
+
+  document.getElementById('e-add-mating').onclick = ()=>{
+    workingMatings.push({ date: today(), method:'natursprung', eberName:'', eberNummer:'' });
+    renderMatingsRows();
+  };
+  document.getElementById('e-add-history').onclick = ()=>{
+    workingHistory.push({ cycleNumber: (workingHistory.length ? workingHistory[workingHistory.length-1].cycleNumber : 0) + 1,
+      matingDate:'', matingMethod:'natursprung', eberName:'', eberNummer:'',
+      farrowDate:'', pigletsLive:'', pigletsStillborn:'', weanDate:'', pigletsWeaned:'', treatments: blankTreatments() });
+    renderHistoryRows();
+  };
+
+  document.getElementById('e-cancel').onclick = closeModal;
+  document.getElementById('e-save').onclick = async ()=>{
+    const name = document.getElementById('e-name').value.trim();
+    if(!name){ showToast('Name darf nicht leer sein'); return; }
+
+    sow.name = name;
+    sow.birthDate = document.getElementById('e-birth').value || null;
+    sow.purchaseDate = document.getElementById('e-purchase').value || null;
+    sow.breederName = document.getElementById('e-breeder').value.trim();
+    sow.tattoo = document.getElementById('e-tattoo').value.trim();
+    sow.cycleNumber = Number(document.getElementById('e-cycle').value) || sow.cycleNumber;
+
+    sow.matings = workingMatings.filter(m=>m.date).map(m=>({ date:m.date, method:m.method, eberName:m.eberName||'', eberNummer:m.eberNummer||'' }));
+
+    sow.pregCheckDate = document.getElementById('e-pcdate').value || null;
+    sow.pregCheckResult = document.getElementById('e-pcresult').value || null;
+
+    sow.farrowDate = document.getElementById('e-farrow').value || null;
+    const liveVal = document.getElementById('e-live').value;
+    const stillVal = document.getElementById('e-still').value;
+    sow.pigletsLive = liveVal===''? null : Number(liveVal);
+    sow.pigletsStillborn = stillVal===''? null : Number(stillVal);
+
+    sow.weanDate = document.getElementById('e-wean').value || null;
+    const weanedVal = document.getElementById('e-weaned').value;
+    sow.pigletsWeaned = weanedVal===''? null : Number(weanedVal);
+
+    document.querySelectorAll('.e-treat-date').forEach(el=>{
+      const key = el.dataset.key;
+      sow.treatments[key] = sow.treatments[key] || {};
+      sow.treatments[key].date = el.value || null;
+      sow.treatments[key].done = !!el.value;
+    });
+    document.querySelectorAll('.e-treat-male').forEach(el=>{
+      sow.treatments[el.dataset.key].male = el.value===''? null : Number(el.value);
+    });
+    document.querySelectorAll('.e-treat-female').forEach(el=>{
+      sow.treatments[el.dataset.key].female = el.value===''? null : Number(el.value);
+    });
+
+    sow.history = workingHistory
+      .filter(h=>h.farrowDate)
+      .map(h=>({
+        cycleNumber: Number(h.cycleNumber) || 0,
+        matings: h.matingDate ? [{ date:h.matingDate, method:h.matingMethod, eberName:h.eberName||'', eberNummer:h.eberNummer||'' }] : [],
+        pregCheckDate: null, pregCheckResult: 'tragend',
+        farrowDate: h.farrowDate,
+        pigletsLive: h.pigletsLive===''||h.pigletsLive==null ? null : Number(h.pigletsLive),
+        pigletsStillborn: h.pigletsStillborn===''||h.pigletsStillborn==null ? null : Number(h.pigletsStillborn),
+        treatments: h.treatments || blankTreatments(),
+        weanDate: h.weanDate || null,
+        pigletsWeaned: h.pigletsWeaned===''||h.pigletsWeaned==null ? null : Number(h.pigletsWeaned)
+      }));
+
+    await persistSow(sow); closeModal(); render(); showToast('Änderungen gespeichert');
+  };
+  overlay.classList.add('open');
+}
+
 function openWeanModal(sow){
   modalBox.innerHTML = `
     <h3>Absetzen eintragen</h3>
@@ -793,6 +1005,7 @@ document.getElementById('list').addEventListener('click', async (e)=>{
   else if(act==='farrow'){ openFarrowModal(sow); }
   else if(act==='wean'){ openWeanModal(sow); }
   else if(act==='treat'){ openTreatmentModal(sow, btn.dataset.key); }
+  else if(act==='edit'){ openEditSowModal(sow); }
 });
 
 document.getElementById('filterRow').addEventListener('click', (e)=>{
