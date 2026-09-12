@@ -53,6 +53,8 @@
   .stats-table-wrap{ overflow-x:auto; border:1px solid var(--line); border-radius:10px; }
   table.stats-table{ width:100%; border-collapse:collapse; font-size:0.8rem; }
   table.stats-table th{ text-align:left; font-weight:600; color:var(--ink-soft); padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap; background:var(--oat-dark); }
+  table.stats-table th.sortable-th{ cursor:pointer; user-select:none; }
+  table.stats-table th.sortable-th:active{ background:var(--line); }
   table.stats-table td{ padding:7px 10px; border-bottom:1px solid var(--line); white-space:nowrap; color:var(--ink); }
   table.stats-table tr:last-child td{ border-bottom:none; }
 
@@ -581,30 +583,62 @@ function render(){
   });
 }
 
+let sowTableSort = { key:'name', dir:'asc' };
+
 function renderSowsBioTable(filtered){
   const phaseLabels = { wartet_rausche:'Wartet auf Rausche', im_deckzentrum:'Deckzentrum', traechtig:'Tragend', saugend:'Säugend' };
-  const sorted = filtered.slice().sort((a,b)=> a.name.localeCompare(b.name, undefined, {numeric:true}));
-  const rows = sorted.map(s=>{
+
+  const rowData = filtered.map(s=>{
     const hist = s.history.slice();
     if(s.farrowDate) hist.push({ farrowDate: s.farrowDate });
-    const lastFarrow = hist.filter(h=>h.farrowDate).map(h=>h.farrowDate).sort().pop();
-    return `<tr>
-      <td>${s.name}</td>
-      <td>${s.tattoo || '–'}</td>
-      <td>${s.breed || '–'}</td>
-      <td>${s.birthDate ? fmt(s.birthDate) : '–'}</td>
-      <td>${phaseLabels[getPhase(s)] || '–'}</td>
-      <td>${s.cycleNumber ?? '–'}</td>
-      <td>${lastFarrow ? fmt(lastFarrow) : '–'}</td>
-      <td>${s.purchaseDate ? fmt(s.purchaseDate) : '–'}</td>
-      <td>${s.breederName || '–'}</td>
-    </tr>`;
+    const lastFarrow = hist.filter(h=>h.farrowDate).map(h=>h.farrowDate).sort().pop() || null;
+    return {
+      name: s.name, tattoo: s.tattoo || '', breed: s.breed || '',
+      birthDate: s.birthDate || '', phaseLabel: phaseLabels[getPhase(s)] || '',
+      cycleNumber: s.cycleNumber ?? 0, lastFarrow: lastFarrow || '',
+      purchaseDate: s.purchaseDate || '', breederName: s.breederName || ''
+    };
+  });
+
+  const { key, dir } = sowTableSort;
+  const mult = dir === 'asc' ? 1 : -1;
+  rowData.sort((a,b)=>{
+    let va = a[key], vb = b[key];
+    if(key === 'cycleNumber') return (va - vb) * mult;
+    return String(va).localeCompare(String(vb), undefined, { numeric:true }) * mult;
+  });
+
+  const columns = [
+    { key:'name', label:'Ohrmarke' },
+    { key:'tattoo', label:'Tät.' },
+    { key:'breed', label:'Rasse' },
+    { key:'birthDate', label:'Geb.datum' },
+    { key:'phaseLabel', label:'Status' },
+    { key:'cycleNumber', label:'Zyklus' },
+    { key:'lastFarrow', label:'Letzte Ferkelung' },
+    { key:'purchaseDate', label:'Zugangsdatum' },
+    { key:'breederName', label:'Lieferant' },
+  ];
+
+  const theadHtml = columns.map(c=>{
+    const arrow = sowTableSort.key === c.key ? (sowTableSort.dir === 'asc' ? ' ▲' : ' ▼') : '';
+    return `<th class="sortable-th" data-key="${c.key}">${c.label}${arrow}</th>`;
   }).join('');
+
+  const rows = rowData.map(r=>`<tr>
+    <td>${r.name}</td>
+    <td>${r.tattoo || '–'}</td>
+    <td>${r.breed || '–'}</td>
+    <td>${r.birthDate ? fmt(r.birthDate) : '–'}</td>
+    <td>${r.phaseLabel || '–'}</td>
+    <td>${r.cycleNumber}</td>
+    <td>${r.lastFarrow ? fmt(r.lastFarrow) : '–'}</td>
+    <td>${r.purchaseDate ? fmt(r.purchaseDate) : '–'}</td>
+    <td>${r.breederName || '–'}</td>
+  </tr>`).join('');
+
   return `<div class="stats-table-wrap"><table class="stats-table">
-    <thead><tr>
-      <th>Ohrmarke</th><th>Tät.</th><th>Rasse</th><th>Geb.datum</th><th>Status</th><th>Zyklus</th>
-      <th>Letzte Ferkelung</th><th>Zugangsdatum</th><th>Lieferant</th>
-    </tr></thead>
+    <thead><tr>${theadHtml}</tr></thead>
     <tbody>${rows}</tbody>
   </table></div>`;
 }
@@ -1023,6 +1057,19 @@ document.getElementById('sowViewToggle').addEventListener('click', (e)=>{
   document.querySelectorAll('#sowViewToggle .chip').forEach(c=>c.classList.remove('active'));
   chip.classList.add('active');
   sowViewMode = chip.dataset.mode;
+  render();
+});
+
+document.getElementById('sowsTableView').addEventListener('click', (e)=>{
+  const th = e.target.closest('.sortable-th');
+  if(!th) return;
+  const key = th.dataset.key;
+  if(sowTableSort.key === key){
+    sowTableSort.dir = sowTableSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    sowTableSort.key = key;
+    sowTableSort.dir = 'asc';
+  }
   render();
 });
 
