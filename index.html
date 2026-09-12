@@ -31,8 +31,9 @@
   .chip.active{ background:var(--ink); color:var(--oat); border-color:var(--ink); }
 
   .viewtabs{ display:flex; gap:6px; margin-bottom:14px; background:var(--oat-dark); padding:4px; border-radius:10px; }
-  .viewtab{ flex:1; border:none; background:transparent; padding:9px; border-radius:7px; font-family:inherit;
-    font-size:0.85rem; font-weight:600; color:var(--ink-soft); cursor:pointer; }
+  .viewtabs{ display:flex; gap:6px; margin-bottom:14px; background:var(--oat-dark); padding:4px; border-radius:10px; overflow-x:auto; }
+  .viewtab{ flex:1; border:none; background:transparent; padding:9px 6px; border-radius:7px; font-family:inherit;
+    font-size:0.82rem; font-weight:600; color:var(--ink-soft); cursor:pointer; white-space:nowrap; }
   .viewtab.active{ background:var(--card); color:var(--ink); box-shadow:0 1px 3px rgba(59,46,35,0.12); }
 
   .stat-section{ margin-bottom:22px; }
@@ -168,6 +169,8 @@
 
   <div class="viewtabs" id="viewTabs">
     <button class="viewtab active" data-view="sows">Sauen</button>
+    <button class="viewtab" data-view="ferkel">Ferkel</button>
+    <button class="viewtab" data-view="mast">Mast</button>
     <button class="viewtab" data-view="stats">Auswertung</button>
     <button class="viewtab" data-view="plan">Arbeitsplan</button>
   </div>
@@ -220,6 +223,9 @@
   <div id="list"></div>
   <div id="sowsTableView" style="display:none;"></div>
   <div id="statsView" style="display:none;"></div>
+
+  <div id="ferkelView" style="display:none;"></div>
+  <div id="mastView" style="display:none;"></div>
 
   <div id="planView" style="display:none;">
     <div class="panel open" style="margin-bottom:16px;">
@@ -341,6 +347,60 @@ async function deleteSowRemote(id){
       alert('Fehler beim Löschen (Code ' + res.status + '):\n' + errText);
     }
   }catch(e){ alert('Löschen fehlgeschlagen:\n' + e.message); }
+}
+
+/* ---------- generische Helfer für weitere Tabellen (Ferkel, Mast) ---------- */
+async function loadTable(tableName){
+  try{
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${tableName}?select=id,data`, { headers: sbHeaders() });
+    if(!res.ok){
+      const errText = await res.text();
+      alert(`Fehler beim Laden (${tableName}, Code ${res.status}):\n` + errText);
+      return [];
+    }
+    const rows = await res.json();
+    return rows.map(r => r.data);
+  }catch(e){
+    alert(`Verbindung zur Datenbank fehlgeschlagen (${tableName}):\n` + e.message);
+    return [];
+  }
+}
+async function persistRecord(tableName, record){
+  try{
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${tableName}?on_conflict=id`, {
+      method:'POST',
+      headers: sbHeaders({'Prefer':'resolution=merge-duplicates,return=minimal'}),
+      body: JSON.stringify([{ id: record.id, data: record }])
+    });
+    if(!res.ok){
+      const errText = await res.text();
+      alert(`Fehler beim Speichern (${tableName}, Code ${res.status}):\n` + errText);
+    }
+  }catch(e){ alert(`Speichern fehlgeschlagen (${tableName}):\n` + e.message); }
+}
+async function deleteRecordRemote(tableName, id){
+  try{
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${tableName}?id=eq.${id}`, { method:'DELETE', headers: sbHeaders() });
+    if(!res.ok){
+      const errText = await res.text();
+      alert(`Fehler beim Löschen (${tableName}, Code ${res.status}):\n` + errText);
+    }
+  }catch(e){ alert(`Löschen fehlgeschlagen (${tableName}):\n` + e.message); }
+}
+
+let ferkelGruppen = [];
+let mastGruppen = [];
+
+async function loadFerkelGruppen(){ ferkelGruppen = await loadTable('ferkel_gruppen'); }
+async function loadMastGruppen(){ mastGruppen = await loadTable('mast_gruppen'); }
+async function persistFerkelGruppe(g){ await persistRecord('ferkel_gruppen', g); }
+async function persistMastGruppe(g){ await persistRecord('mast_gruppen', g); }
+async function deleteFerkelGruppeRemote(id){ await deleteRecordRemote('ferkel_gruppen', id); }
+async function deleteMastGruppeRemote(id){ await deleteRecordRemote('mast_gruppen', id); }
+
+async function loadAll(){
+  await Promise.all([ loadSows(), loadFerkelGruppen(), loadMastGruppen() ]);
+  refreshCurrentView();
 }
 
 /* ---------- new sow panel ---------- */
@@ -1055,9 +1115,10 @@ function openWeanModal(sow){
   document.getElementById('w-cancel').onclick = closeModal;
   document.getElementById('w-save').onclick = async ()=>{
     const date = document.getElementById('w-date').value;
+    const count = Number(document.getElementById('w-count').value || 0);
     if(!date){ showToast('Bitte Datum angeben'); return; }
     sow.weanDate = date;
-    sow.pigletsWeaned = document.getElementById('w-count').value || 0;
+    sow.pigletsWeaned = count;
 
     // archive cycle
     sow.history.push({
@@ -1072,7 +1133,20 @@ function openWeanModal(sow){
     sow.farrowDate = null; sow.pigletsLive = null; sow.pigletsStillborn = null;
     sow.treatments = blankTreatments(); sow.weanDate = null; sow.pigletsWeaned = null;
 
-    await persistSow(sow); closeModal(); render(); showToast('Abgesetzt – Zyklus zurückgesetzt');
+    await persistSow(sow);
+
+    // automatisch neue Ferkelgruppe im Ferkelstall anlegen
+    if(count > 0){
+      const gruppe = {
+        id: 'fg_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
+        sowName: sow.name, weanDate: date, initialCount: count,
+        losses: [], outflows: []
+      };
+      ferkelGruppen.push(gruppe);
+      await persistFerkelGruppe(gruppe);
+    }
+
+    closeModal(); render(); showToast('Abgesetzt – Ferkel in den Ferkelstall übernommen');
   };
   overlay.classList.add('open');
 }
@@ -1151,7 +1225,7 @@ document.getElementById('sowsTableView').addEventListener('click', (e)=>{
 });
 
 document.getElementById('refreshBtn').addEventListener('click', async ()=>{
-  await loadSows();
+  await loadAll();
   showToast('Aktualisiert');
 });
 
@@ -1170,6 +1244,8 @@ document.getElementById('viewTabs').addEventListener('click', (e)=>{
   btn.classList.add('active');
   currentView = btn.dataset.view;
   const showSows = currentView === 'sows';
+  const showFerkel = currentView === 'ferkel';
+  const showMast = currentView === 'mast';
   const showStats = currentView === 'stats';
   const showPlan = currentView === 'plan';
   document.getElementById('filterRow').style.display = showSows ? 'flex' : 'none';
@@ -1177,6 +1253,8 @@ document.getElementById('viewTabs').addEventListener('click', (e)=>{
   document.getElementById('cardSortRow').style.display = showSows ? 'flex' : 'none';
   document.getElementById('searchWrap').style.display = showSows ? 'block' : 'none';
   document.getElementById('list').style.display = showSows ? 'block' : 'none';
+  document.getElementById('ferkelView').style.display = showFerkel ? 'block' : 'none';
+  document.getElementById('mastView').style.display = showMast ? 'block' : 'none';
   document.getElementById('statsView').style.display = showStats ? 'block' : 'none';
   document.getElementById('planView').style.display = showPlan ? 'block' : 'none';
   if(!showSows) { panel.classList.remove('open'); document.getElementById('sowsTableView').style.display = 'none'; }
@@ -1187,6 +1265,8 @@ document.getElementById('viewTabs').addEventListener('click', (e)=>{
 function refreshCurrentView(){
   if(currentView === 'stats') renderStats();
   else if(currentView === 'plan') renderArbeitsplan();
+  else if(currentView === 'ferkel') renderFerkelView();
+  else if(currentView === 'mast') renderMastView();
   else render();
 }
 
@@ -1561,9 +1641,239 @@ document.getElementById('printPlanBtn').addEventListener('click', ()=>{
   window.print();
 });
 
-loadSows();
-setInterval(loadSows, 20000);
-document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) loadSows(); });
+/* ================= FERKEL (Ferkelstall) ================= */
+const FERKEL_FUTTERWECHSEL_TAG = 14;
+
+function ferkelGruppeStats(g){
+  const lossSum = (g.losses||[]).reduce((a,l)=>a+Number(l.count||0),0);
+  const outSum = (g.outflows||[]).reduce((a,o)=>a+Number(o.count||0),0);
+  const soldSum = (g.outflows||[]).filter(o=>o.destination==='verkauft').reduce((a,o)=>a+Number(o.count||0),0);
+  const mastSum = (g.outflows||[]).filter(o=>o.destination==='mast').reduce((a,o)=>a+Number(o.count||0),0);
+  const remaining = g.initialCount - lossSum - outSum;
+  const daysSince = daysBetween(g.weanDate, today());
+  const verschnitt = daysSince <= FERKEL_FUTTERWECHSEL_TAG;
+  return { lossSum, soldSum, mastSum, remaining, daysSince, verschnitt };
+}
+
+function renderFerkelView(){
+  const el = document.getElementById('ferkelView');
+  if(!ferkelGruppen.length){
+    el.innerHTML = `<div class="empty"><div class="big">Noch keine Ferkelgruppen</div>Sobald bei einer Sau „Absetzen" eingetragen wird, erscheint hier automatisch eine neue Ferkelgruppe.</div>`;
+    return;
+  }
+  const sorted = ferkelGruppen.slice().sort((a,b)=> b.weanDate.localeCompare(a.weanDate));
+  el.innerHTML = sorted.map(g=>{
+    const st = ferkelGruppeStats(g);
+    const cls = st.verschnitt ? 'due-soon' : '';
+    return `<div class="card ${cls}">
+      <div class="card-top">
+        <div class="card-name-wrap"><span class="card-name">Sau ${g.sowName}</span><span class="cycle-tag">${st.remaining} / ${g.initialCount}</span></div>
+        <span class="status-tag ${st.verschnitt?'soon':''}">${st.verschnitt ? 'Verschnittfutter (Tag '+st.daysSince+')' : 'Normalfutter'}</span>
+      </div>
+      <div class="biorow">Eingestallt am ${fmt(g.weanDate)}</div>
+      <div class="rows">
+        Verluste: <b>${st.lossSum}</b><br>
+        Verkauft: <b>${st.soldSum}</b> · In Mast umgestallt: <b>${st.mastSum}</b><br>
+        Aktueller Bestand: <b>${st.remaining}</b>
+      </div>
+      <div class="card-actions">
+        <button data-act="fLoss" data-id="${g.id}">Verlust eintragen</button>
+        <button data-act="fOut" data-id="${g.id}">Verkauf / Umstallung eintragen</button>
+        <button data-act="fDel" data-id="${g.id}" class="del">Gruppe löschen</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openFerkelLossModal(g){
+  modalBox.innerHTML = `
+    <h3>Verlust eintragen – Sau ${g.sowName}</h3>
+    <div class="field"><label>Datum</label><input type="date" id="fl-date" value="${today()}"></div>
+    <div class="field"><label>Anzahl verendet</label><input type="number" min="0" id="fl-count"></div>
+    <div class="modal-btns">
+      <button class="btn-primary" id="fl-save">Speichern</button>
+      <button class="btn-secondary" id="fl-cancel">Abbrechen</button>
+    </div>
+  `;
+  document.getElementById('fl-cancel').onclick = closeModal;
+  document.getElementById('fl-save').onclick = async ()=>{
+    const date = document.getElementById('fl-date').value;
+    const count = Number(document.getElementById('fl-count').value || 0);
+    if(!date || count<=0){ showToast('Bitte Datum und Anzahl angeben'); return; }
+    g.losses = g.losses || [];
+    g.losses.push({ date, count });
+    await persistFerkelGruppe(g); closeModal(); renderFerkelView(); showToast('Verlust eingetragen');
+  };
+  overlay.classList.add('open');
+}
+
+function openFerkelOutflowModal(g){
+  const st = ferkelGruppeStats(g);
+  modalBox.innerHTML = `
+    <h3>Verkauf / Umstallung – Sau ${g.sowName}</h3>
+    <div class="stat-note" style="margin-bottom:10px;">Aktueller Bestand: ${st.remaining} Ferkel</div>
+    <div class="field"><label>Datum</label><input type="date" id="fo-date" value="${today()}"></div>
+    <div class="field"><label>Anzahl</label><input type="number" min="1" max="${st.remaining}" id="fo-count"></div>
+    <div class="field">
+      <label>Ziel</label>
+      <div class="radiorow">
+        <div class="radiopill sel" data-val="verkauft" id="fo-pill-sell">Verkauft</div>
+        <div class="radiopill" data-val="mast" id="fo-pill-mast">In die Mast</div>
+      </div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-primary" id="fo-save">Speichern</button>
+      <button class="btn-secondary" id="fo-cancel">Abbrechen</button>
+    </div>
+  `;
+  let destination = 'verkauft';
+  document.getElementById('fo-pill-sell').onclick = ()=>{ destination='verkauft'; document.getElementById('fo-pill-sell').classList.add('sel'); document.getElementById('fo-pill-mast').classList.remove('sel'); };
+  document.getElementById('fo-pill-mast').onclick = ()=>{ destination='mast'; document.getElementById('fo-pill-mast').classList.add('sel'); document.getElementById('fo-pill-sell').classList.remove('sel'); };
+  document.getElementById('fo-cancel').onclick = closeModal;
+  document.getElementById('fo-save').onclick = async ()=>{
+    const date = document.getElementById('fo-date').value;
+    const count = Number(document.getElementById('fo-count').value || 0);
+    if(!date || count<=0){ showToast('Bitte Datum und Anzahl angeben'); return; }
+    if(count > st.remaining){ showToast('Anzahl größer als aktueller Bestand'); return; }
+    g.outflows = g.outflows || [];
+    g.outflows.push({ date, count, destination });
+    await persistFerkelGruppe(g);
+
+    if(destination === 'mast'){
+      const mastGruppe = {
+        id: 'mg_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
+        originFerkelId: g.id, sowName: g.sowName, moveDate: date, count,
+        losses: [], sales: []
+      };
+      mastGruppen.push(mastGruppe);
+      await persistMastGruppe(mastGruppe);
+    }
+
+    closeModal(); renderFerkelView(); showToast(destination==='mast' ? 'In Mast umgestallt' : 'Verkauf eingetragen');
+  };
+  overlay.classList.add('open');
+}
+
+document.getElementById('ferkelView').addEventListener('click', async (e)=>{
+  const btn = e.target.closest('button[data-act]');
+  if(!btn) return;
+  const id = btn.dataset.id;
+  const g = ferkelGruppen.find(x=>x.id===id);
+  if(!g) return;
+  const act = btn.dataset.act;
+  if(act==='fLoss'){ openFerkelLossModal(g); }
+  else if(act==='fOut'){ openFerkelOutflowModal(g); }
+  else if(act==='fDel'){
+    if(confirm(`Ferkelgruppe von Sau ${g.sowName} wirklich löschen?`)){
+      ferkelGruppen = ferkelGruppen.filter(x=>x.id!==id);
+      await deleteFerkelGruppeRemote(id); renderFerkelView(); showToast('Gruppe gelöscht');
+    }
+  }
+});
+
+/* ================= MAST ================= */
+function mastGruppeStats(g){
+  const lossSum = (g.losses||[]).reduce((a,l)=>a+Number(l.count||0),0);
+  const saleSum = (g.sales||[]).reduce((a,s)=>a+Number(s.count||0),0);
+  const remaining = g.count - lossSum - saleSum;
+  return { lossSum, saleSum, remaining };
+}
+
+function renderMastView(){
+  const el = document.getElementById('mastView');
+  if(!mastGruppen.length){
+    el.innerHTML = `<div class="empty"><div class="big">Noch keine Mastgruppen</div>Sobald Ferkel im Ferkelstall auf „In die Mast" umgestallt werden, erscheinen sie hier.</div>`;
+    return;
+  }
+  const sorted = mastGruppen.slice().sort((a,b)=> b.moveDate.localeCompare(a.moveDate));
+  el.innerHTML = sorted.map(g=>{
+    const st = mastGruppeStats(g);
+    return `<div class="card">
+      <div class="card-top">
+        <div class="card-name-wrap"><span class="card-name">Sau ${g.sowName}</span><span class="cycle-tag">${st.remaining} / ${g.count}</span></div>
+      </div>
+      <div class="biorow">In Mast seit ${fmt(g.moveDate)}</div>
+      <div class="rows">
+        Verluste: <b>${st.lossSum}</b><br>
+        Verkauft: <b>${st.saleSum}</b><br>
+        Aktueller Bestand: <b>${st.remaining}</b>
+      </div>
+      <div class="card-actions">
+        <button data-act="mLoss" data-id="${g.id}">Verlust eintragen</button>
+        <button data-act="mSale" data-id="${g.id}">Verkauf eintragen</button>
+        <button data-act="mDel" data-id="${g.id}" class="del">Gruppe löschen</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openMastLossModal(g){
+  modalBox.innerHTML = `
+    <h3>Verlust eintragen – Sau ${g.sowName}</h3>
+    <div class="field"><label>Datum</label><input type="date" id="ml-date" value="${today()}"></div>
+    <div class="field"><label>Anzahl verendet</label><input type="number" min="0" id="ml-count"></div>
+    <div class="modal-btns">
+      <button class="btn-primary" id="ml-save">Speichern</button>
+      <button class="btn-secondary" id="ml-cancel">Abbrechen</button>
+    </div>
+  `;
+  document.getElementById('ml-cancel').onclick = closeModal;
+  document.getElementById('ml-save').onclick = async ()=>{
+    const date = document.getElementById('ml-date').value;
+    const count = Number(document.getElementById('ml-count').value || 0);
+    if(!date || count<=0){ showToast('Bitte Datum und Anzahl angeben'); return; }
+    g.losses = g.losses || [];
+    g.losses.push({ date, count });
+    await persistMastGruppe(g); closeModal(); renderMastView(); showToast('Verlust eingetragen');
+  };
+  overlay.classList.add('open');
+}
+
+function openMastSaleModal(g){
+  const st = mastGruppeStats(g);
+  modalBox.innerHTML = `
+    <h3>Verkauf eintragen – Sau ${g.sowName}</h3>
+    <div class="stat-note" style="margin-bottom:10px;">Aktueller Bestand: ${st.remaining} Tiere</div>
+    <div class="field"><label>Datum</label><input type="date" id="ms-date" value="${today()}"></div>
+    <div class="field"><label>Anzahl</label><input type="number" min="1" max="${st.remaining}" id="ms-count"></div>
+    <div class="modal-btns">
+      <button class="btn-primary" id="ms-save">Speichern</button>
+      <button class="btn-secondary" id="ms-cancel">Abbrechen</button>
+    </div>
+  `;
+  document.getElementById('ms-cancel').onclick = closeModal;
+  document.getElementById('ms-save').onclick = async ()=>{
+    const date = document.getElementById('ms-date').value;
+    const count = Number(document.getElementById('ms-count').value || 0);
+    if(!date || count<=0){ showToast('Bitte Datum und Anzahl angeben'); return; }
+    if(count > st.remaining){ showToast('Anzahl größer als aktueller Bestand'); return; }
+    g.sales = g.sales || [];
+    g.sales.push({ date, count });
+    await persistMastGruppe(g); closeModal(); renderMastView(); showToast('Verkauf eingetragen');
+  };
+  overlay.classList.add('open');
+}
+
+document.getElementById('mastView').addEventListener('click', async (e)=>{
+  const btn = e.target.closest('button[data-act]');
+  if(!btn) return;
+  const id = btn.dataset.id;
+  const g = mastGruppen.find(x=>x.id===id);
+  if(!g) return;
+  const act = btn.dataset.act;
+  if(act==='mLoss'){ openMastLossModal(g); }
+  else if(act==='mSale'){ openMastSaleModal(g); }
+  else if(act==='mDel'){
+    if(confirm(`Mastgruppe von Sau ${g.sowName} wirklich löschen?`)){
+      mastGruppen = mastGruppen.filter(x=>x.id!==id);
+      await deleteMastGruppeRemote(id); renderMastView(); showToast('Gruppe gelöscht');
+    }
+  }
+});
+
+loadAll();
+setInterval(loadAll, 20000);
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) loadAll(); });
 </script>
 </body>
 </html>
