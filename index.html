@@ -71,7 +71,7 @@
 
   .print-only{ display:none; }
   @media print{
-    header, .addbar, .viewtabs, .filterrow, #planView .panel, .toast, .modal-overlay{ display:none !important; }
+    header, .addbar, .viewtabs, .filterrow, #planView .panel, #tierlisteView .panel, .toast, .modal-overlay{ display:none !important; }
     body{ background:#fff; padding:0; }
     main{ max-width:100%; padding:0 6px; }
     .print-only{ display:block; font-family:'Source Serif 4', serif; font-size:1.3rem; font-weight:700; margin:0 0 14px; }
@@ -171,6 +171,7 @@
     <button class="viewtab active" data-view="sows">Sauen</button>
     <button class="viewtab" data-view="ferkel">Ferkel</button>
     <button class="viewtab" data-view="mast">Mast</button>
+    <button class="viewtab" data-view="tierliste">Tierliste</button>
     <button class="viewtab" data-view="stats">Auswertung</button>
     <button class="viewtab" data-view="plan">Arbeitsplan</button>
   </div>
@@ -224,8 +225,50 @@
   <div id="sowsTableView" style="display:none;"></div>
   <div id="statsView" style="display:none;"></div>
 
+  <div class="addbar" id="ferkelAddBar" style="display:none;">
+    <button class="addbtn" id="toggleFerkelAdd">+ Ferkelgruppe eintragen (Bestand)</button>
+  </div>
+  <div class="panel" id="ferkelAddPanel">
+    <h2>Bestehende Ferkelgruppe eintragen</h2>
+    <div class="field"><label>Herkunft (Sau / Bezeichnung)</label><input type="text" id="fg-sow" placeholder="z. B. 236 oder Altbestand"></div>
+    <div class="field"><label>Einstalldatum (Absetzdatum)</label><input type="date" id="fg-date"></div>
+    <div class="field"><label>Anzahl Ferkel</label><input type="number" min="1" id="fg-count"></div>
+    <div class="panelbtns">
+      <button class="btn-primary" id="fg-save">Speichern</button>
+      <button class="btn-secondary" id="fg-cancel">Abbrechen</button>
+    </div>
+  </div>
   <div id="ferkelView" style="display:none;"></div>
+
+  <div class="addbar" id="mastAddBar" style="display:none;">
+    <button class="addbtn" id="toggleMastAdd">+ Mastgruppe eintragen (Bestand)</button>
+  </div>
+  <div class="panel" id="mastAddPanel">
+    <h2>Bestehende Mastgruppe eintragen</h2>
+    <div class="field"><label>Herkunft (Sau / Bezeichnung)</label><input type="text" id="mg-sow" placeholder="z. B. 236 oder Altbestand"></div>
+    <div class="field"><label>Einstalldatum</label><input type="date" id="mg-date"></div>
+    <div class="field"><label>Anzahl Tiere</label><input type="number" min="1" id="mg-count"></div>
+    <div class="field">
+      <label>Bucht auswählen</label>
+      <select id="mg-pen"></select>
+    </div>
+    <div class="panelbtns">
+      <button class="btn-primary" id="mg-save">Speichern</button>
+      <button class="btn-secondary" id="mg-cancel">Abbrechen</button>
+    </div>
+  </div>
   <div id="mastView" style="display:none;"></div>
+
+  <div id="tierlisteView" style="display:none;">
+    <div class="panel open" style="margin-bottom:16px;">
+      <h2>Jahr wählen</h2>
+      <div class="field-row" style="align-items:flex-end;">
+        <div class="field"><label>Jahr</label><input type="number" id="tl-year" style="max-width:140px;"></div>
+        <button class="btn-secondary" id="printTierlisteBtn">🖨 Tierliste drucken</button>
+      </div>
+    </div>
+    <div id="tierlisteResults"></div>
+  </div>
 
   <div id="planView" style="display:none;">
     <div class="panel open" style="margin-bottom:16px;">
@@ -1246,6 +1289,7 @@ document.getElementById('viewTabs').addEventListener('click', (e)=>{
   const showSows = currentView === 'sows';
   const showFerkel = currentView === 'ferkel';
   const showMast = currentView === 'mast';
+  const showTierliste = currentView === 'tierliste';
   const showStats = currentView === 'stats';
   const showPlan = currentView === 'plan';
   document.getElementById('filterRow').style.display = showSows ? 'flex' : 'none';
@@ -1255,16 +1299,23 @@ document.getElementById('viewTabs').addEventListener('click', (e)=>{
   document.getElementById('list').style.display = showSows ? 'block' : 'none';
   document.getElementById('ferkelView').style.display = showFerkel ? 'block' : 'none';
   document.getElementById('mastView').style.display = showMast ? 'block' : 'none';
+  document.getElementById('tierlisteView').style.display = showTierliste ? 'block' : 'none';
+  document.getElementById('ferkelAddBar').style.display = showFerkel ? 'flex' : 'none';
+  document.getElementById('mastAddBar').style.display = showMast ? 'flex' : 'none';
+  if(!showFerkel) document.getElementById('ferkelAddPanel').classList.remove('open');
+  if(!showMast) document.getElementById('mastAddPanel').classList.remove('open');
   document.getElementById('statsView').style.display = showStats ? 'block' : 'none';
   document.getElementById('planView').style.display = showPlan ? 'block' : 'none';
   if(!showSows) { panel.classList.remove('open'); document.getElementById('sowsTableView').style.display = 'none'; }
   if(showPlan) initPlanRange();
+  if(showTierliste) initTierlisteYear();
   refreshCurrentView();
 });
 
 function refreshCurrentView(){
   if(currentView === 'stats') renderStats();
   else if(currentView === 'plan') renderArbeitsplan();
+  else if(currentView === 'tierliste') renderTierliste();
   else if(currentView === 'ferkel') renderFerkelView();
   else if(currentView === 'mast') renderMastView();
   else render();
@@ -1709,6 +1760,12 @@ function openFerkelLossModal(g){
 
 function openFerkelOutflowModal(g){
   const st = ferkelGruppeStats(g);
+  const pens = pensStatus();
+  const penOptionsHtml = pens.map(p=>{
+    const label = p.occupant ? `Ventil ${p.ventil} / Bucht ${p.bucht} – belegt (Sau ${p.occupant.sowName}, ${p.remaining} Tiere)` : `Ventil ${p.ventil} / Bucht ${p.bucht} – frei`;
+    return `<option value="${p.ventil}-${p.bucht}">${label}</option>`;
+  }).join('');
+
   modalBox.innerHTML = `
     <h3>Verkauf / Umstallung – Sau ${g.sowName}</h3>
     <div class="stat-note" style="margin-bottom:10px;">Aktueller Bestand: ${st.remaining} Ferkel</div>
@@ -1721,20 +1778,35 @@ function openFerkelOutflowModal(g){
         <div class="radiopill" data-val="mast" id="fo-pill-mast">In die Mast</div>
       </div>
     </div>
+    <div class="field" id="fo-pen-wrap" style="display:none;">
+      <label>Bucht auswählen</label>
+      <select id="fo-pen">${penOptionsHtml}</select>
+    </div>
     <div class="modal-btns">
       <button class="btn-primary" id="fo-save">Speichern</button>
       <button class="btn-secondary" id="fo-cancel">Abbrechen</button>
     </div>
   `;
   let destination = 'verkauft';
-  document.getElementById('fo-pill-sell').onclick = ()=>{ destination='verkauft'; document.getElementById('fo-pill-sell').classList.add('sel'); document.getElementById('fo-pill-mast').classList.remove('sel'); };
-  document.getElementById('fo-pill-mast').onclick = ()=>{ destination='mast'; document.getElementById('fo-pill-mast').classList.add('sel'); document.getElementById('fo-pill-sell').classList.remove('sel'); };
+  document.getElementById('fo-pill-sell').onclick = ()=>{ destination='verkauft'; document.getElementById('fo-pill-sell').classList.add('sel'); document.getElementById('fo-pill-mast').classList.remove('sel'); document.getElementById('fo-pen-wrap').style.display='none'; };
+  document.getElementById('fo-pill-mast').onclick = ()=>{ destination='mast'; document.getElementById('fo-pill-mast').classList.add('sel'); document.getElementById('fo-pill-sell').classList.remove('sel'); document.getElementById('fo-pen-wrap').style.display='block'; };
   document.getElementById('fo-cancel').onclick = closeModal;
   document.getElementById('fo-save').onclick = async ()=>{
     const date = document.getElementById('fo-date').value;
     const count = Number(document.getElementById('fo-count').value || 0);
     if(!date || count<=0){ showToast('Bitte Datum und Anzahl angeben'); return; }
     if(count > st.remaining){ showToast('Anzahl größer als aktueller Bestand'); return; }
+
+    let ventil = null, bucht = null;
+    if(destination === 'mast'){
+      const [vRaw, bRaw] = document.getElementById('fo-pen').value.split('-');
+      ventil = Number(vRaw); bucht = bRaw;
+      const pen = pens.find(p=>p.ventil===ventil && p.bucht===bucht);
+      if(pen && pen.occupant){
+        if(!confirm(`Ventil ${ventil} / Bucht ${bucht} ist bereits belegt (Sau ${pen.occupant.sowName}, ${pen.remaining} Tiere). Trotzdem verwenden?`)) return;
+      }
+    }
+
     g.outflows = g.outflows || [];
     g.outflows.push({ date, count, destination });
     await persistFerkelGruppe(g);
@@ -1743,6 +1815,7 @@ function openFerkelOutflowModal(g){
       const mastGruppe = {
         id: 'mg_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
         originFerkelId: g.id, sowName: g.sowName, moveDate: date, count,
+        ventil, bucht,
         losses: [], sales: []
       };
       mastGruppen.push(mastGruppe);
@@ -1772,6 +1845,15 @@ document.getElementById('ferkelView').addEventListener('click', async (e)=>{
 });
 
 /* ================= MAST ================= */
+const MAST_VENTILE = [1,2,3,4,5,6,7,10,11,12,13,14,15]; // Ventil 8 und 9 gibt es nicht
+const MAST_BUCHTEN = ['A','B'];
+
+function allPens(){
+  const pens = [];
+  MAST_VENTILE.forEach(v=> MAST_BUCHTEN.forEach(b=> pens.push({ ventil:v, bucht:b })));
+  return pens;
+}
+
 function mastGruppeStats(g){
   const lossSum = (g.losses||[]).reduce((a,l)=>a+Number(l.count||0),0);
   const saleSum = (g.sales||[]).reduce((a,s)=>a+Number(s.count||0),0);
@@ -1779,22 +1861,51 @@ function mastGruppeStats(g){
   return { lossSum, saleSum, remaining };
 }
 
+function pensStatus(){
+  return allPens().map(p=>{
+    const occupant = mastGruppen.find(g => g.ventil===p.ventil && g.bucht===p.bucht && mastGruppeStats(g).remaining > 0);
+    return { ...p, occupant, remaining: occupant ? mastGruppeStats(occupant).remaining : 0 };
+  });
+}
+
 function renderMastView(){
   const el = document.getElementById('mastView');
+
+  const pens = pensStatus();
+  const belegt = pens.filter(p=>p.occupant).length;
+  const belegplanHtml = `
+    <div class="stat-section">
+      <h3>Belegplan <span style="font-weight:400;color:var(--ink-soft);font-size:0.8rem;">(${belegt} / ${pens.length} Buchten belegt)</span></h3>
+      <div class="stats-table-wrap"><table class="stats-table">
+        <thead><tr><th>Ventil</th><th>Bucht</th><th>Status</th><th>Sau (Herkunft)</th><th>Anzahl</th></tr></thead>
+        <tbody>
+          ${pens.map(p=>`<tr>
+            <td>${p.ventil}</td>
+            <td>${p.bucht}</td>
+            <td>${p.occupant ? 'belegt' : 'frei'}</td>
+            <td>${p.occupant ? p.occupant.sowName : '–'}</td>
+            <td>${p.occupant ? p.remaining : '–'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>
+  `;
+
   if(!mastGruppen.length){
-    el.innerHTML = `<div class="empty"><div class="big">Noch keine Mastgruppen</div>Sobald Ferkel im Ferkelstall auf „In die Mast" umgestallt werden, erscheinen sie hier.</div>`;
+    el.innerHTML = belegplanHtml + `<div class="empty"><div class="big">Noch keine Mastgruppen</div>Sobald Ferkel im Ferkelstall auf „In die Mast" umgestallt werden, erscheinen sie hier.</div>`;
     return;
   }
-  const sorted = mastGruppen.slice().sort((a,b)=> b.moveDate.localeCompare(a.moveDate));
-  el.innerHTML = sorted.map(g=>{
+  const sorted = mastGruppen.slice().sort((a,b)=> (a.ventil-b.ventil) || a.bucht.localeCompare(b.bucht));
+  const cardsHtml = sorted.map(g=>{
     const st = mastGruppeStats(g);
     return `<div class="card">
       <div class="card-top">
-        <div class="card-name-wrap"><span class="card-name">Sau ${g.sowName}</span><span class="cycle-tag">${st.remaining} / ${g.count}</span></div>
+        <div class="card-name-wrap"><span class="card-name">Ventil ${g.ventil} · Bucht ${g.bucht}</span><span class="cycle-tag">${st.remaining} / ${g.count}</span></div>
       </div>
-      <div class="biorow">In Mast seit ${fmt(g.moveDate)}</div>
+      <div class="biorow">Sau ${g.sowName} · in Mast seit ${fmt(g.moveDate)}</div>
       <div class="rows">
         Verluste: <b>${st.lossSum}</b><br>
+        Verendung: <b>${st.lossSum}</b><br>
         Verkauft: <b>${st.saleSum}</b><br>
         Aktueller Bestand: <b>${st.remaining}</b>
       </div>
@@ -1805,6 +1916,7 @@ function renderMastView(){
       </div>
     </div>`;
   }).join('');
+  el.innerHTML = belegplanHtml + cardsHtml;
 }
 
 function openMastLossModal(g){
@@ -1835,7 +1947,17 @@ function openMastSaleModal(g){
     <h3>Verkauf eintragen – Sau ${g.sowName}</h3>
     <div class="stat-note" style="margin-bottom:10px;">Aktueller Bestand: ${st.remaining} Tiere</div>
     <div class="field"><label>Datum</label><input type="date" id="ms-date" value="${today()}"></div>
-    <div class="field"><label>Anzahl</label><input type="number" min="1" max="${st.remaining}" id="ms-count"></div>
+    <div class="field"><label>Anzahl (Stück)</label><input type="number" min="1" max="${st.remaining}" id="ms-count"></div>
+    <div class="field-row">
+      <div class="field"><label>Basispreis (€/kg)</label><input type="number" step="0.01" id="ms-basispreis"></div>
+      <div class="field"><label>Mfa %</label><input type="number" step="0.01" id="ms-mfa"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Ø Gewicht (kg)</label><input type="number" step="0.1" id="ms-gewicht"></div>
+      <div class="field"><label>Ama-Gütesiegel Stück</label><input type="number" min="0" id="ms-ama"></div>
+    </div>
+    <div class="field"><label>Gesamtpreis (€)</label><input type="number" step="0.01" id="ms-gesamtpreis"></div>
+    <div class="stat-note">Preis-/Qualitätsangaben sind optional, werden aber für die Verkaufsstatistik in der Tierliste ausgewertet.</div>
     <div class="modal-btns">
       <button class="btn-primary" id="ms-save">Speichern</button>
       <button class="btn-secondary" id="ms-cancel">Abbrechen</button>
@@ -1847,8 +1969,16 @@ function openMastSaleModal(g){
     const count = Number(document.getElementById('ms-count').value || 0);
     if(!date || count<=0){ showToast('Bitte Datum und Anzahl angeben'); return; }
     if(count > st.remaining){ showToast('Anzahl größer als aktueller Bestand'); return; }
+    const numOrNull = v => v===''? null : Number(v);
     g.sales = g.sales || [];
-    g.sales.push({ date, count });
+    g.sales.push({
+      date, count,
+      basispreis: numOrNull(document.getElementById('ms-basispreis').value),
+      mfa: numOrNull(document.getElementById('ms-mfa').value),
+      gewicht: numOrNull(document.getElementById('ms-gewicht').value),
+      amaCount: numOrNull(document.getElementById('ms-ama').value),
+      gesamtpreis: numOrNull(document.getElementById('ms-gesamtpreis').value)
+    });
     await persistMastGruppe(g); closeModal(); renderMastView(); showToast('Verkauf eingetragen');
   };
   overlay.classList.add('open');
@@ -1870,6 +2000,237 @@ document.getElementById('mastView').addEventListener('click', async (e)=>{
     }
   }
 });
+
+/* ---------- Bestand einpflegen: Ferkel ---------- */
+const ferkelAddPanel = document.getElementById('ferkelAddPanel');
+document.getElementById('toggleFerkelAdd').addEventListener('click', ()=>{
+  ferkelAddPanel.classList.toggle('open');
+  if(ferkelAddPanel.classList.contains('open')) document.getElementById('fg-date').value = today();
+});
+document.getElementById('fg-cancel').addEventListener('click', ()=>{
+  ferkelAddPanel.classList.remove('open');
+});
+document.getElementById('fg-save').addEventListener('click', async ()=>{
+  const sowName = document.getElementById('fg-sow').value.trim() || 'Bestand';
+  const date = document.getElementById('fg-date').value;
+  const count = Number(document.getElementById('fg-count').value || 0);
+  if(!date || count<=0){ showToast('Bitte Datum und Anzahl angeben'); return; }
+  const gruppe = {
+    id: 'fg_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
+    sowName, weanDate: date, initialCount: count, losses: [], outflows: []
+  };
+  ferkelGruppen.push(gruppe);
+  await persistFerkelGruppe(gruppe);
+  ferkelAddPanel.classList.remove('open');
+  document.getElementById('fg-sow').value=''; document.getElementById('fg-count').value='';
+  renderFerkelView(); showToast('Ferkelgruppe eingetragen');
+});
+
+/* ---------- Bestand einpflegen: Mast ---------- */
+const mastAddPanel = document.getElementById('mastAddPanel');
+document.getElementById('toggleMastAdd').addEventListener('click', ()=>{
+  mastAddPanel.classList.toggle('open');
+  if(mastAddPanel.classList.contains('open')){
+    document.getElementById('mg-date').value = today();
+    const pens = pensStatus();
+    document.getElementById('mg-pen').innerHTML = pens.map(p=>{
+      const label = p.occupant ? `Ventil ${p.ventil} / Bucht ${p.bucht} – belegt (${p.occupant.sowName}, ${p.remaining} Tiere)` : `Ventil ${p.ventil} / Bucht ${p.bucht} – frei`;
+      return `<option value="${p.ventil}-${p.bucht}">${label}</option>`;
+    }).join('');
+  }
+});
+document.getElementById('mg-cancel').addEventListener('click', ()=>{
+  mastAddPanel.classList.remove('open');
+});
+document.getElementById('mg-save').addEventListener('click', async ()=>{
+  const sowName = document.getElementById('mg-sow').value.trim() || 'Bestand';
+  const date = document.getElementById('mg-date').value;
+  const count = Number(document.getElementById('mg-count').value || 0);
+  if(!date || count<=0){ showToast('Bitte Datum und Anzahl angeben'); return; }
+  const [vRaw, bRaw] = document.getElementById('mg-pen').value.split('-');
+  const ventil = Number(vRaw), bucht = bRaw;
+  const pens = pensStatus();
+  const pen = pens.find(p=>p.ventil===ventil && p.bucht===bucht);
+  if(pen && pen.occupant){
+    if(!confirm(`Ventil ${ventil} / Bucht ${bucht} ist bereits belegt (${pen.occupant.sowName}, ${pen.remaining} Tiere). Trotzdem verwenden?`)) return;
+  }
+  const gruppe = {
+    id: 'mg_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
+    originFerkelId: null, sowName, moveDate: date, count, ventil, bucht, losses: [], sales: []
+  };
+  mastGruppen.push(gruppe);
+  await persistMastGruppe(gruppe);
+  mastAddPanel.classList.remove('open');
+  document.getElementById('mg-sow').value=''; document.getElementById('mg-count').value='';
+  renderMastView(); showToast('Mastgruppe eingetragen');
+});
+
+/* ================= TIERLISTE (Jahresdurchschnittsbestand) ================= */
+function collectMastTransactions(){
+  const tx = [];
+  mastGruppen.forEach(g=>{
+    if(g.moveDate) tx.push({ date:g.moveDate, type:'zugang', count:Number(g.count||0) });
+    (g.losses||[]).forEach(l=> tx.push({ date:l.date, type:'verlust', count:Number(l.count||0) }));
+    (g.sales||[]).forEach(s=> tx.push({ date:s.date, type:(s.type||'verkauft'), count:Number(s.count||0) }));
+  });
+  return tx;
+}
+
+function computeTierliste(year){
+  const yearStart = `${year}-01-01`;
+  const nextYearStart = `${year+1}-01-01`;
+  const tx = collectMastTransactions();
+
+  let anfangsbestand = 0;
+  tx.forEach(t=>{
+    if(t.date < yearStart){
+      anfangsbestand += (t.type==='zugang') ? t.count : -t.count;
+    }
+  });
+
+  const weeks = [];
+  for(let w=1; w<=52; w++) weeks.push({ week:w, zugang:0, verkauft:0, verendung:0 });
+
+  tx.forEach(t=>{
+    if(t.date >= yearStart && t.date < nextYearStart){
+      const dayOfYear = daysBetween(yearStart, t.date) + 1;
+      const idx = Math.min(Math.ceil(dayOfYear/7), 52) - 1;
+      if(t.type==='zugang') weeks[idx].zugang += t.count;
+      else if(t.type==='verkauft') weeks[idx].verkauft += t.count;
+      else if(t.type==='verlust') weeks[idx].verendung += t.count;
+    }
+  });
+
+  let running = anfangsbestand;
+  let sumBestand = 0;
+  weeks.forEach(w=>{
+    running += w.zugang - w.verkauft - w.verendung;
+    w.bestand = running;
+    sumBestand += running;
+  });
+
+  const totalZugang = weeks.reduce((a,w)=>a+w.zugang,0);
+  const totalVerkauft = weeks.reduce((a,w)=>a+w.verkauft,0);
+  const totalVerendung = weeks.reduce((a,w)=>a+w.verendung,0);
+  const jahresdurchschnitt = sumBestand / 52;
+
+  let ferkelVK = 0, ferkelEig = 0;
+  ferkelGruppen.forEach(g=>{
+    (g.outflows||[]).forEach(o=>{
+      if(o.date >= yearStart && o.date < nextYearStart){
+        if(o.destination==='verkauft') ferkelVK += Number(o.count||0);
+        else if(o.destination==='mast') ferkelEig += Number(o.count||0);
+      }
+    });
+  });
+
+  return { year, anfangsbestand, weeks, totalZugang, totalVerkauft, totalVerendung,
+    sumBestand, jahresdurchschnitt, ferkelVK, ferkelEig, gesFerkel: ferkelVK + ferkelEig };
+}
+
+function initTierlisteYear(){
+  const el = document.getElementById('tl-year');
+  if(!el.value) el.value = new Date(today()).getFullYear();
+}
+
+function computeVerkaufsstatistik(year){
+  const yearStart = `${year}-01-01`;
+  const nextYearStart = `${year+1}-01-01`;
+  const sales = [];
+  mastGruppen.forEach(g=>{
+    (g.sales||[]).forEach(s=>{
+      if(s.date >= yearStart && s.date < nextYearStart){
+        sales.push({ ...s, sowName: g.sowName, ventil: g.ventil, bucht: g.bucht });
+      }
+    });
+  });
+  sales.sort((a,b)=> a.date.localeCompare(b.date));
+
+  const stueck = sales.reduce((a,s)=>a+Number(s.count||0),0);
+  const gesamtpreis = sales.reduce((a,s)=>a + (s.gesamtpreis!=null ? Number(s.gesamtpreis) : 0), 0);
+  const amaStueck = sales.reduce((a,s)=>a + (s.amaCount!=null ? Number(s.amaCount) : 0), 0);
+  const amaAnteil = stueck ? (amaStueck*100/stueck) : null;
+
+  // Einfacher Durchschnitt je Lieferung (nicht nach Stückzahl gewichtet) - entspricht der Originaltabelle
+  const simpleAvg = (key) => {
+    const vals = sales.filter(s=>s[key]!=null).map(s=>Number(s[key]));
+    return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
+  };
+  const basispreisAvg = simpleAvg('basispreis');
+  const mfaAvg = simpleAvg('mfa');
+  const gewichtAvg = simpleAvg('gewicht');
+  const durchschnPreis = stueck ? gesamtpreis/stueck : null;
+
+  return { year, sales, stueck, gesamtpreis, amaStueck, amaAnteil, basispreisAvg, mfaAvg, gewichtAvg, durchschnPreis };
+}
+
+function renderTierliste(){
+  const year = Number(document.getElementById('tl-year').value) || new Date(today()).getFullYear();
+  const d = computeTierliste(year);
+  const v = computeVerkaufsstatistik(year);
+  const el = document.getElementById('tierlisteResults');
+  const f2 = n => n==null ? '–' : n.toFixed(2);
+
+  el.innerHTML = `
+    <div class="print-only">Tierliste ${year} – Jahresdurchschnittsbestand Mastschweine</div>
+    <div class="stat-section">
+      <h3>Formblatt ${year} – Ermittlung des Jahresdurchschnittbestandes</h3>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-value">${d.anfangsbestand}</div><div class="stat-label">Anfangsbestand 1. Jänner</div></div>
+        <div class="stat-card"><div class="stat-value">${d.jahresdurchschnitt.toFixed(2)}</div><div class="stat-label">Jahresdurchschnittsbestand</div></div>
+      </div>
+    </div>
+    <div class="stats-table-wrap"><table class="stats-table">
+      <thead><tr><th>Woche</th><th>Zugang</th><th>Verkauf</th><th>Verendung</th><th>Bestand</th></tr></thead>
+      <tbody>
+        ${d.weeks.map(w=>`<tr>
+          <td>${w.week}</td><td>${w.zugang || ''}</td><td>${w.verkauft || ''}</td><td>${w.verendung || ''}</td><td><b>${w.bestand}</b></td>
+        </tr>`).join('')}
+        <tr>
+          <td><b>Summe</b></td><td><b>${d.totalZugang}</b></td><td><b>${d.totalVerkauft}</b></td><td><b>${d.totalVerendung}</b></td><td><b>${d.sumBestand}</b></td>
+        </tr>
+      </tbody>
+    </table></div>
+    <div class="stat-note" style="margin:8px 0 20px;">Jahresdurchschnittsbestand = Summe der Wochenbestände (${d.sumBestand}) / 52 = <b>${d.jahresdurchschnitt.toFixed(2)}</b></div>
+
+    <div class="stat-section">
+      <h3>Ferkel – Jahresübersicht ${year}</h3>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-value">${d.ferkelVK}</div><div class="stat-label">Ferkel verkauft</div></div>
+        <div class="stat-card"><div class="stat-value">${d.ferkelEig}</div><div class="stat-label">Ferkel Eigenbedarf (in Mast)</div></div>
+        <div class="stat-card"><div class="stat-value">${d.gesFerkel}</div><div class="stat-label">Ges. Ferkel</div></div>
+      </div>
+      <div class="stat-note">Verendung entspricht den bei den Mastschweinen eingetragenen Verlusten.</div>
+    </div>
+
+    <div class="stat-section">
+      <h3>Verkaufsstatistik Mastschweine ${year}</h3>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-value">${v.stueck}</div><div class="stat-label">Stück verkauft</div></div>
+        <div class="stat-card"><div class="stat-value">${f2(v.basispreisAvg)}</div><div class="stat-label">Ø Basispreis (€/kg)</div></div>
+        <div class="stat-card"><div class="stat-value">${f2(v.mfaAvg)}</div><div class="stat-label">Ø Mfa %</div></div>
+        <div class="stat-card"><div class="stat-value">${f2(v.gewichtAvg)}</div><div class="stat-label">Ø Gewicht (kg)</div></div>
+        <div class="stat-card"><div class="stat-value">${v.amaStueck}</div><div class="stat-label">Ama-Gütesiegel Stück</div></div>
+        <div class="stat-card"><div class="stat-value">${f2(v.amaAnteil)}%</div><div class="stat-label">Ama-Anteil</div></div>
+        <div class="stat-card"><div class="stat-value">${f2(v.durchschnPreis)}</div><div class="stat-label">Ø Preis / Stück (€)</div></div>
+        <div class="stat-card"><div class="stat-value">${f2(v.gesamtpreis)}</div><div class="stat-label">Gesamterlös (€)</div></div>
+      </div>
+      ${v.sales.length ? `
+      <div class="stats-table-wrap" style="margin-top:12px;"><table class="stats-table">
+        <thead><tr><th>Datum</th><th>Herkunft</th><th>Stück</th><th>Basispreis</th><th>Mfa%</th><th>Gewicht</th><th>Ama St.</th><th>Gesamtpreis</th></tr></thead>
+        <tbody>
+          ${v.sales.map(s=>`<tr>
+            <td>${fmt(s.date)}</td><td>${s.sowName}${s.ventil?` (V${s.ventil}/${s.bucht})`:''}</td><td>${s.count}</td>
+            <td>${s.basispreis ?? '–'}</td><td>${s.mfa ?? '–'}</td><td>${s.gewicht ?? '–'}</td><td>${s.amaCount ?? '–'}</td><td>${s.gesamtpreis ?? '–'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>` : '<div class="stat-note">Noch keine Verkäufe mit Preisdaten in diesem Jahr.</div>'}
+    </div>
+  `;
+}
+
+document.getElementById('tl-year').addEventListener('change', renderTierliste);
+document.getElementById('printTierlisteBtn').addEventListener('click', ()=> window.print());
 
 loadAll();
 setInterval(loadAll, 20000);
