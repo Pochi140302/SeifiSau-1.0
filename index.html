@@ -1707,6 +1707,7 @@ document.getElementById('printPlanBtn').addEventListener('click', ()=>{
 
 /* ================= FERKEL (Ferkelstall) ================= */
 const FERKEL_FUTTERWECHSEL_TAG = 14;
+let ferkelShowAll = false;
 
 function ferkelGruppeStats(g){
   const lossSum = (g.losses||[]).reduce((a,l)=>a+Number(l.count||0),0);
@@ -1743,12 +1744,17 @@ function renderFerkelView(){
         `).join('')}
       </div>
     </div>
+    <div class="filterrow" id="ferkelActiveToggle">
+      <button class="chip ${ferkelShowAll?'':'active'}" data-mode="active">Aktive Gruppen</button>
+      <button class="chip ${ferkelShowAll?'active':''}" data-mode="all">Alle (inkl. Archiv)</button>
+    </div>
   `;
-  if(!ferkelGruppen.length){
-    el.innerHTML = stallHtml + `<div class="empty"><div class="big">Noch keine Ferkelgruppen</div>Sobald bei einer Sau „Absetzen" eingetragen wird, erscheint hier automatisch eine neue Ferkelgruppe.</div>`;
+  const visible = ferkelShowAll ? ferkelGruppen : ferkelGruppen.filter(g=>ferkelGruppeStats(g).remaining > 0);
+  if(!visible.length){
+    el.innerHTML = stallHtml + `<div class="empty"><div class="big">${ferkelShowAll ? 'Noch keine Ferkelgruppen' : 'Keine aktiven Ferkelgruppen'}</div>${ferkelShowAll ? 'Sobald bei einer Sau „Absetzen" eingetragen wird, erscheint hier automatisch eine neue Ferkelgruppe.' : 'Sobald Ferkel abgesetzt oder eingetragen werden, erscheinen sie hier.'}</div>`;
     return;
   }
-  const sorted = ferkelGruppen.slice().sort((a,b)=> b.weanDate.localeCompare(a.weanDate));
+  const sorted = visible.slice().sort((a,b)=> b.weanDate.localeCompare(a.weanDate));
   const cardsHtml = sorted.map(g=>{
     const st = ferkelGruppeStats(g);
     const cls = st.verschnitt ? 'due-soon' : '';
@@ -1866,6 +1872,12 @@ function openFerkelOutflowModal(g){
 }
 
 document.getElementById('ferkelView').addEventListener('click', async (e)=>{
+  const chip = e.target.closest('#ferkelActiveToggle .chip');
+  if(chip){
+    ferkelShowAll = chip.dataset.mode === 'all';
+    renderFerkelView();
+    return;
+  }
   const btn = e.target.closest('button[data-act]');
   if(!btn) return;
   const id = btn.dataset.id;
@@ -1884,6 +1896,7 @@ document.getElementById('ferkelView').addEventListener('click', async (e)=>{
 
 /* ================= MAST ================= */
 // Ventil 8 und 9 gibt es nicht. Ventil 1, 10, 12 und 15 haben nur eine Bucht (A), alle anderen zwei (A+B).
+let mastShowAll = false;
 const MAST_PENS_CONFIG = {
   1: ['A'],
   2: ['A','B'],
@@ -1971,12 +1984,23 @@ function renderMastView(){
     el.innerHTML = belegplanHtml + `<div class="empty"><div class="big">Noch keine Mastgruppen</div>Sobald Ferkel im Ferkelstall auf „In die Mast" umgestallt werden, erscheinen sie hier.</div>`;
     return;
   }
-  const sorted = mastGruppen.slice().sort((a,b)=> (a.ventil-b.ventil) || a.bucht.localeCompare(b.bucht));
+  const toggleHtml = `
+    <div class="filterrow" id="mastActiveToggle">
+      <button class="chip ${mastShowAll?'':'active'}" data-mode="active">Aktive Buchten</button>
+      <button class="chip ${mastShowAll?'active':''}" data-mode="all">Alle (inkl. Archiv)</button>
+    </div>
+  `;
+  const visible = mastShowAll ? mastGruppen : mastGruppen.filter(g=>g.ventil!=null && mastGruppeStats(g).remaining > 0);
+  if(!visible.length){
+    el.innerHTML = belegplanHtml + toggleHtml + `<div class="empty"><div class="big">Keine aktiven Mastgruppen</div>Sobald Tiere umgestallt oder eingetragen werden, erscheinen sie hier.</div>`;
+    return;
+  }
+  const sorted = visible.slice().sort((a,b)=> (a.ventil-b.ventil) || (a.bucht||'').localeCompare(b.bucht||''));
   const cardsHtml = sorted.map(g=>{
     const st = mastGruppeStats(g);
     return `<div class="card">
       <div class="card-top">
-        <div class="card-name-wrap"><span class="card-name">Ventil ${g.ventil} · Bucht ${g.bucht}</span><span class="cycle-tag">${st.remaining} / ${totalZugang(g)}</span></div>
+        <div class="card-name-wrap"><span class="card-name">${g.ventil!=null ? `Ventil ${g.ventil} · Bucht ${g.bucht}` : g.sowName}</span><span class="cycle-tag">${st.remaining} / ${totalZugang(g)}</span></div>
       </div>
       <div class="biorow">Sau ${g.sowName} · in Mast seit ${fmt(firstZugangDate(g))}</div>
       <div class="rows">
@@ -1993,7 +2017,7 @@ function renderMastView(){
       </div>
     </div>`;
   }).join('');
-  el.innerHTML = belegplanHtml + cardsHtml;
+  el.innerHTML = belegplanHtml + toggleHtml + cardsHtml;
 }
 
 function openMastLossModal(g){
@@ -2120,6 +2144,12 @@ function openMastMoveModal(g){
 }
 
 document.getElementById('mastView').addEventListener('click', async (e)=>{
+  const chip = e.target.closest('#mastActiveToggle .chip');
+  if(chip){
+    mastShowAll = chip.dataset.mode === 'all';
+    renderMastView();
+    return;
+  }
   const btn = e.target.closest('button[data-act]');
   if(!btn) return;
   const id = btn.dataset.id;
