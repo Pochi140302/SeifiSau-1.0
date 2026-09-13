@@ -233,6 +233,19 @@
     <div class="field"><label>Herkunft (Sau / Bezeichnung)</label><input type="text" id="fg-sow" placeholder="z. B. 236 oder Altbestand"></div>
     <div class="field"><label>Einstalldatum (Absetzdatum)</label><input type="date" id="fg-date"></div>
     <div class="field"><label>Anzahl Ferkel</label><input type="number" min="1" id="fg-count"></div>
+    <div class="field">
+      <label>Ferkelstall</label>
+      <div class="radiorow">
+        <div class="radiopill sel" data-val="1" id="fg-pill-s1">Ferkelstall 1</div>
+        <div class="radiopill" data-val="2" id="fg-pill-s2">Ferkelstall 2</div>
+      </div>
+    </div>
+    <div class="field">
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+        <input type="checkbox" id="fg-noverschnitt" style="width:auto;">
+        Bekommt kein Verschnittfutter mehr (Übergangsphase bereits vorbei)
+      </label>
+    </div>
     <div class="panelbtns">
       <button class="btn-primary" id="fg-save">Speichern</button>
       <button class="btn-secondary" id="fg-cancel">Abbrechen</button>
@@ -1702,23 +1715,46 @@ function ferkelGruppeStats(g){
   const mastSum = (g.outflows||[]).filter(o=>o.destination==='mast').reduce((a,o)=>a+Number(o.count||0),0);
   const remaining = g.initialCount - lossSum - outSum;
   const daysSince = daysBetween(g.weanDate, today());
-  const verschnitt = daysSince <= FERKEL_FUTTERWECHSEL_TAG;
+  const verschnitt = !g.noVerschnitt && daysSince <= FERKEL_FUTTERWECHSEL_TAG;
   return { lossSum, soldSum, mastSum, remaining, daysSince, verschnitt };
+}
+
+function ferkelstallStatus(){
+  const stalls = ['1','2'];
+  return stalls.map(s=>{
+    const groups = ferkelGruppen.filter(g => (g.stall||'1') === s && ferkelGruppeStats(g).remaining > 0);
+    const total = groups.reduce((a,g)=>a+ferkelGruppeStats(g).remaining, 0);
+    return { stall:s, belegt: groups.length>0, total, groups };
+  });
 }
 
 function renderFerkelView(){
   const el = document.getElementById('ferkelView');
+  const stallStatus = ferkelstallStatus();
+  const stallHtml = `
+    <div class="stat-section">
+      <h3>Ferkelstall-Übersicht</h3>
+      <div class="stat-grid">
+        ${stallStatus.map(s=>`
+          <div class="stat-card">
+            <div class="stat-value">${s.belegt ? s.total : '–'}</div>
+            <div class="stat-label">Ferkelstall ${s.stall} – ${s.belegt ? 'belegt' : 'frei'}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
   if(!ferkelGruppen.length){
-    el.innerHTML = `<div class="empty"><div class="big">Noch keine Ferkelgruppen</div>Sobald bei einer Sau „Absetzen" eingetragen wird, erscheint hier automatisch eine neue Ferkelgruppe.</div>`;
+    el.innerHTML = stallHtml + `<div class="empty"><div class="big">Noch keine Ferkelgruppen</div>Sobald bei einer Sau „Absetzen" eingetragen wird, erscheint hier automatisch eine neue Ferkelgruppe.</div>`;
     return;
   }
   const sorted = ferkelGruppen.slice().sort((a,b)=> b.weanDate.localeCompare(a.weanDate));
-  el.innerHTML = sorted.map(g=>{
+  const cardsHtml = sorted.map(g=>{
     const st = ferkelGruppeStats(g);
     const cls = st.verschnitt ? 'due-soon' : '';
     return `<div class="card ${cls}">
       <div class="card-top">
-        <div class="card-name-wrap"><span class="card-name">Sau ${g.sowName}</span><span class="cycle-tag">${st.remaining} / ${g.initialCount}</span></div>
+        <div class="card-name-wrap"><span class="card-name">Sau ${g.sowName}</span><span class="cycle-tag">Stall ${g.stall||'1'} · ${st.remaining} / ${g.initialCount}</span></div>
         <span class="status-tag ${st.verschnitt?'soon':''}">${st.verschnitt ? 'Verschnittfutter (Tag '+st.daysSince+')' : 'Normalfutter'}</span>
       </div>
       <div class="biorow">Eingestallt am ${fmt(g.weanDate)}</div>
@@ -1734,6 +1770,7 @@ function renderFerkelView(){
       </div>
     </div>`;
   }).join('');
+  el.innerHTML = stallHtml + cardsHtml;
 }
 
 function openFerkelLossModal(g){
@@ -1814,7 +1851,8 @@ function openFerkelOutflowModal(g){
     if(destination === 'mast'){
       const mastGruppe = {
         id: 'mg_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
-        originFerkelId: g.id, sowName: g.sowName, moveDate: date, count,
+        originFerkelId: g.id, sowName: g.sowName,
+        zugaenge: [{ date, count }],
         ventil, bucht,
         losses: [], sales: []
       };
@@ -1854,10 +1892,23 @@ function allPens(){
   return pens;
 }
 
+function getZugaenge(g){
+  if(g.zugaenge && g.zugaenge.length) return g.zugaenge;
+  if(g.moveDate) return [{ date:g.moveDate, count:Number(g.count||0) }];
+  return [];
+}
+function totalZugang(g){
+  return getZugaenge(g).reduce((a,z)=>a+Number(z.count||0),0);
+}
+function firstZugangDate(g){
+  const list = getZugaenge(g).map(z=>z.date).filter(Boolean).sort();
+  return list.length ? list[0] : null;
+}
+
 function mastGruppeStats(g){
   const lossSum = (g.losses||[]).reduce((a,l)=>a+Number(l.count||0),0);
-  const saleSum = (g.sales||[]).reduce((a,s)=>a+Number(s.count||0),0);
-  const remaining = g.count - lossSum - saleSum;
+  const saleSum = (g.sales||[]).filter(s=>!s.priceOnly).reduce((a,s)=>a+Number(s.count||0),0);
+  const remaining = totalZugang(g) - lossSum - saleSum;
   return { lossSum, saleSum, remaining };
 }
 
@@ -1900,11 +1951,10 @@ function renderMastView(){
     const st = mastGruppeStats(g);
     return `<div class="card">
       <div class="card-top">
-        <div class="card-name-wrap"><span class="card-name">Ventil ${g.ventil} · Bucht ${g.bucht}</span><span class="cycle-tag">${st.remaining} / ${g.count}</span></div>
+        <div class="card-name-wrap"><span class="card-name">Ventil ${g.ventil} · Bucht ${g.bucht}</span><span class="cycle-tag">${st.remaining} / ${totalZugang(g)}</span></div>
       </div>
-      <div class="biorow">Sau ${g.sowName} · in Mast seit ${fmt(g.moveDate)}</div>
+      <div class="biorow">Sau ${g.sowName} · in Mast seit ${fmt(firstZugangDate(g))}</div>
       <div class="rows">
-        Verluste: <b>${st.lossSum}</b><br>
         Verendung: <b>${st.lossSum}</b><br>
         Verkauft: <b>${st.saleSum}</b><br>
         Aktueller Bestand: <b>${st.remaining}</b>
@@ -2003,6 +2053,10 @@ document.getElementById('mastView').addEventListener('click', async (e)=>{
 
 /* ---------- Bestand einpflegen: Ferkel ---------- */
 const ferkelAddPanel = document.getElementById('ferkelAddPanel');
+let fgStall = '1';
+document.getElementById('fg-pill-s1').addEventListener('click', ()=>{ fgStall='1'; document.getElementById('fg-pill-s1').classList.add('sel'); document.getElementById('fg-pill-s2').classList.remove('sel'); });
+document.getElementById('fg-pill-s2').addEventListener('click', ()=>{ fgStall='2'; document.getElementById('fg-pill-s2').classList.add('sel'); document.getElementById('fg-pill-s1').classList.remove('sel'); });
+
 document.getElementById('toggleFerkelAdd').addEventListener('click', ()=>{
   ferkelAddPanel.classList.toggle('open');
   if(ferkelAddPanel.classList.contains('open')) document.getElementById('fg-date').value = today();
@@ -2014,15 +2068,17 @@ document.getElementById('fg-save').addEventListener('click', async ()=>{
   const sowName = document.getElementById('fg-sow').value.trim() || 'Bestand';
   const date = document.getElementById('fg-date').value;
   const count = Number(document.getElementById('fg-count').value || 0);
+  const noVerschnitt = document.getElementById('fg-noverschnitt').checked;
   if(!date || count<=0){ showToast('Bitte Datum und Anzahl angeben'); return; }
   const gruppe = {
     id: 'fg_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
-    sowName, weanDate: date, initialCount: count, losses: [], outflows: []
+    sowName, weanDate: date, initialCount: count, stall: fgStall, noVerschnitt, losses: [], outflows: []
   };
   ferkelGruppen.push(gruppe);
   await persistFerkelGruppe(gruppe);
   ferkelAddPanel.classList.remove('open');
   document.getElementById('fg-sow').value=''; document.getElementById('fg-count').value='';
+  document.getElementById('fg-noverschnitt').checked = false;
   renderFerkelView(); showToast('Ferkelgruppe eingetragen');
 });
 
@@ -2056,7 +2112,7 @@ document.getElementById('mg-save').addEventListener('click', async ()=>{
   }
   const gruppe = {
     id: 'mg_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
-    originFerkelId: null, sowName, moveDate: date, count, ventil, bucht, losses: [], sales: []
+    originFerkelId: null, sowName, zugaenge: [{ date, count }], ventil, bucht, losses: [], sales: []
   };
   mastGruppen.push(gruppe);
   await persistMastGruppe(gruppe);
@@ -2069,9 +2125,9 @@ document.getElementById('mg-save').addEventListener('click', async ()=>{
 function collectMastTransactions(){
   const tx = [];
   mastGruppen.forEach(g=>{
-    if(g.moveDate) tx.push({ date:g.moveDate, type:'zugang', count:Number(g.count||0) });
+    getZugaenge(g).forEach(z=> tx.push({ date:z.date, type:'zugang', count:Number(z.count||0) }));
     (g.losses||[]).forEach(l=> tx.push({ date:l.date, type:'verlust', count:Number(l.count||0) }));
-    (g.sales||[]).forEach(s=> tx.push({ date:s.date, type:(s.type||'verkauft'), count:Number(s.count||0) }));
+    (g.sales||[]).filter(s=>!s.priceOnly).forEach(s=> tx.push({ date:s.date, type:'verkauft', count:Number(s.count||0) }));
   });
   return tx;
 }
@@ -2136,10 +2192,11 @@ function initTierlisteYear(){
 function computeVerkaufsstatistik(year){
   const yearStart = `${year}-01-01`;
   const nextYearStart = `${year+1}-01-01`;
+  const hasPriceInfo = s => s.priceOnly || s.basispreis!=null || s.mfa!=null || s.gewicht!=null || s.gesamtpreis!=null || s.amaCount!=null;
   const sales = [];
   mastGruppen.forEach(g=>{
     (g.sales||[]).forEach(s=>{
-      if(s.date >= yearStart && s.date < nextYearStart){
+      if(s.date >= yearStart && s.date < nextYearStart && hasPriceInfo(s)){
         sales.push({ ...s, sowName: g.sowName, ventil: g.ventil, bucht: g.bucht });
       }
     });
