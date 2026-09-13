@@ -1799,7 +1799,7 @@ function openFerkelOutflowModal(g){
   const st = ferkelGruppeStats(g);
   const pens = pensStatus();
   const penOptionsHtml = pens.map(p=>{
-    const label = p.occupant ? `Ventil ${p.ventil} / Bucht ${p.bucht} – belegt (Sau ${p.occupant.sowName}, ${p.remaining} Tiere)` : `Ventil ${p.ventil} / Bucht ${p.bucht} – frei`;
+    const label = p.occupant ? `Ventil ${p.ventil} / Bucht ${p.bucht} – belegt (${p.sowNames}, ${p.remaining} Tiere)` : `Ventil ${p.ventil} / Bucht ${p.bucht} – frei`;
     return `<option value="${p.ventil}-${p.bucht}">${label}</option>`;
   }).join('');
 
@@ -1925,15 +1925,23 @@ function firstZugangDate(g){
 function mastGruppeStats(g){
   const lossSum = (g.losses||[]).reduce((a,l)=>a+Number(l.count||0),0);
   const saleSum = (g.sales||[]).filter(s=>!s.priceOnly).reduce((a,s)=>a+Number(s.count||0),0);
-  const remaining = totalZugang(g) - lossSum - saleSum;
-  return { lossSum, saleSum, remaining };
+  const regroupOutSum = (g.regroupOut||[]).reduce((a,r)=>a+Number(r.count||0),0);
+  const remaining = totalZugang(g) - lossSum - saleSum - regroupOutSum;
+  return { lossSum, saleSum, regroupOutSum, remaining };
 }
 
 function pensStatus(){
   return allPens().map(p=>{
-    const occupant = mastGruppen.find(g => g.ventil===p.ventil && g.bucht===p.bucht && mastGruppeStats(g).remaining > 0);
-    return { ...p, occupant, remaining: occupant ? mastGruppeStats(occupant).remaining : 0 };
+    const occupants = mastGruppen.filter(g => g.ventil===p.ventil && g.bucht===p.bucht && mastGruppeStats(g).remaining > 0);
+    const total = occupants.reduce((a,g)=>a+mastGruppeStats(g).remaining, 0);
+    const occupant = occupants[0] || null;
+    const sowNames = occupants.map(g=>g.sowName).join(', ');
+    return { ...p, occupant, occupants, remaining: total, sowNames };
   });
+}
+
+function findOrCreateTargetMastGruppe(sowName, ventil, bucht){
+  return mastGruppen.find(g => g.ventil===ventil && g.bucht===bucht && mastGruppeStats(g).remaining > 0);
 }
 
 function renderMastView(){
@@ -1951,7 +1959,7 @@ function renderMastView(){
             <td>${p.ventil}</td>
             <td>${p.bucht}</td>
             <td>${p.occupant ? 'belegt' : 'frei'}</td>
-            <td>${p.occupant ? p.occupant.sowName : '–'}</td>
+            <td>${p.occupant ? p.sowNames : '–'}</td>
             <td>${p.occupant ? p.remaining : '–'}</td>
           </tr>`).join('')}
         </tbody>
@@ -1974,11 +1982,13 @@ function renderMastView(){
       <div class="rows">
         Verendung: <b>${st.lossSum}</b><br>
         Verkauft: <b>${st.saleSum}</b><br>
+        Umgestallt (intern): <b>${st.regroupOutSum}</b><br>
         Aktueller Bestand: <b>${st.remaining}</b>
       </div>
       <div class="card-actions">
         <button data-act="mLoss" data-id="${g.id}">Verlust eintragen</button>
         <button data-act="mSale" data-id="${g.id}">Verkauf eintragen</button>
+        <button data-act="mMove" data-id="${g.id}" class="ghost">Umstallen (andere Bucht)</button>
         <button data-act="mDel" data-id="${g.id}" class="del">Gruppe löschen</button>
       </div>
     </div>`;
@@ -2051,6 +2061,64 @@ function openMastSaleModal(g){
   overlay.classList.add('open');
 }
 
+function openMastMoveModal(g){
+  const st = mastGruppeStats(g);
+  const pens = pensStatus();
+  const penOptionsHtml = pens
+    .filter(p => !(p.ventil===g.ventil && p.bucht===g.bucht))
+    .map(p=>{
+      const label = p.occupant ? `Ventil ${p.ventil} / Bucht ${p.bucht} – belegt (${p.sowNames}, ${p.remaining} Tiere)` : `Ventil ${p.ventil} / Bucht ${p.bucht} – frei`;
+      return `<option value="${p.ventil}-${p.bucht}">${label}</option>`;
+    }).join('');
+
+  modalBox.innerHTML = `
+    <h3>Umstallen in andere Bucht – Ventil ${g.ventil} / Bucht ${g.bucht}</h3>
+    <div class="stat-note" style="margin-bottom:10px;">Aktueller Bestand hier: ${st.remaining} Tiere. Diese Umstallung zählt nicht als Verkauf/Verlust in der Tierliste.</div>
+    <div class="field"><label>Datum</label><input type="date" id="mm-date" value="${today()}"></div>
+    <div class="field"><label>Anzahl</label><input type="number" min="1" max="${st.remaining}" id="mm-count"></div>
+    <div class="field">
+      <label>Ziel-Bucht</label>
+      <select id="mm-pen">${penOptionsHtml}</select>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-primary" id="mm-save">Speichern</button>
+      <button class="btn-secondary" id="mm-cancel">Abbrechen</button>
+    </div>
+  `;
+  document.getElementById('mm-cancel').onclick = closeModal;
+  document.getElementById('mm-save').onclick = async ()=>{
+    const date = document.getElementById('mm-date').value;
+    const count = Number(document.getElementById('mm-count').value || 0);
+    if(!date || count<=0){ showToast('Bitte Datum und Anzahl angeben'); return; }
+    if(count > st.remaining){ showToast('Anzahl größer als aktueller Bestand'); return; }
+    const [vRaw, bRaw] = document.getElementById('mm-pen').value.split('-');
+    const toVentil = Number(vRaw), toBucht = bRaw;
+
+    g.regroupOut = g.regroupOut || [];
+    g.regroupOut.push({ date, count, toVentil, toBucht });
+    await persistMastGruppe(g);
+
+    const target = findOrCreateTargetMastGruppe(g.sowName, toVentil, toBucht);
+    if(target){
+      target.zugaenge = target.zugaenge || [];
+      target.zugaenge.push({ date, count, internal:true, fromGroupId: g.id });
+      await persistMastGruppe(target);
+    } else {
+      const neu = {
+        id: 'mg_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
+        sowName: g.sowName, originFerkelId: g.originFerkelId || null,
+        zugaenge: [{ date, count, internal:true, fromGroupId: g.id }],
+        ventil: toVentil, bucht: toBucht, losses: [], sales: [], regroupOut: []
+      };
+      mastGruppen.push(neu);
+      await persistMastGruppe(neu);
+    }
+
+    closeModal(); renderMastView(); showToast('Umgestallt');
+  };
+  overlay.classList.add('open');
+}
+
 document.getElementById('mastView').addEventListener('click', async (e)=>{
   const btn = e.target.closest('button[data-act]');
   if(!btn) return;
@@ -2060,6 +2128,7 @@ document.getElementById('mastView').addEventListener('click', async (e)=>{
   const act = btn.dataset.act;
   if(act==='mLoss'){ openMastLossModal(g); }
   else if(act==='mSale'){ openMastSaleModal(g); }
+  else if(act==='mMove'){ openMastMoveModal(g); }
   else if(act==='mDel'){
     if(confirm(`Mastgruppe von Sau ${g.sowName} wirklich löschen?`)){
       mastGruppen = mastGruppen.filter(x=>x.id!==id);
@@ -2107,7 +2176,7 @@ document.getElementById('toggleMastAdd').addEventListener('click', ()=>{
     document.getElementById('mg-date').value = today();
     const pens = pensStatus();
     document.getElementById('mg-pen').innerHTML = pens.map(p=>{
-      const label = p.occupant ? `Ventil ${p.ventil} / Bucht ${p.bucht} – belegt (${p.occupant.sowName}, ${p.remaining} Tiere)` : `Ventil ${p.ventil} / Bucht ${p.bucht} – frei`;
+      const label = p.occupant ? `Ventil ${p.ventil} / Bucht ${p.bucht} – belegt (${p.sowNames}, ${p.remaining} Tiere)` : `Ventil ${p.ventil} / Bucht ${p.bucht} – frei`;
       return `<option value="${p.ventil}-${p.bucht}">${label}</option>`;
     }).join('');
   }
@@ -2142,9 +2211,11 @@ document.getElementById('mg-save').addEventListener('click', async ()=>{
 function collectMastTransactions(){
   const tx = [];
   mastGruppen.forEach(g=>{
-    getZugaenge(g).forEach(z=> tx.push({ date:z.date, type:'zugang', count:Number(z.count||0) }));
+    getZugaenge(g).filter(z=>!z.internal).forEach(z=> tx.push({ date:z.date, type:'zugang', count:Number(z.count||0) }));
     (g.losses||[]).forEach(l=> tx.push({ date:l.date, type:'verlust', count:Number(l.count||0) }));
     (g.sales||[]).filter(s=>!s.priceOnly).forEach(s=> tx.push({ date:s.date, type:'verkauft', count:Number(s.count||0) }));
+    // regroupOut (interne Umstallung zwischen Buchten) faellt bewusst nicht in die Bestandsrechnung,
+    // da die Tiere den Betrieb nicht verlassen - nur der Zugang beim Ziel wird als "internal" markiert.
   });
   return tx;
 }
