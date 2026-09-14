@@ -171,6 +171,7 @@
     <button class="viewtab active" data-view="sows">Sauen</button>
     <button class="viewtab" data-view="ferkel">Ferkel</button>
     <button class="viewtab" data-view="mast">Mast</button>
+    <button class="viewtab" data-view="verkauf">Verkauf</button>
     <button class="viewtab" data-view="tierliste">Tierliste</button>
     <button class="viewtab" data-view="stats">Auswertung</button>
     <button class="viewtab" data-view="plan">Arbeitsplan</button>
@@ -281,6 +282,17 @@
       </div>
     </div>
     <div id="tierlisteResults"></div>
+  </div>
+
+  <div id="verkaufView" style="display:none;">
+    <div class="panel open" style="margin-bottom:16px;">
+      <h2>Jahr wählen</h2>
+      <div class="field-row" style="align-items:flex-end;">
+        <div class="field"><label>Jahr</label><input type="number" id="vk-year" style="max-width:140px;"></div>
+        <button class="btn-secondary" id="printVerkaufBtn">🖨 Verkaufsliste drucken</button>
+      </div>
+    </div>
+    <div id="verkaufResults"></div>
   </div>
 
   <div id="planView" style="display:none;">
@@ -654,7 +666,7 @@ let cardSortDir = 'asc';
 function render(){
   const list = document.getElementById('list');
   const tableEl = document.getElementById('sowsTableView');
-  let filtered = sows.filter(s => currentFilter==='all' || getPhase(s)===currentFilter);
+  let filtered = sows.filter(s => !s.abgang && (currentFilter==='all' || getPhase(s)===currentFilter));
   if(searchTerm){
     const term = searchTerm.toLowerCase();
     filtered = filtered.filter(s => s.name.toLowerCase().includes(term));
@@ -714,6 +726,7 @@ function render(){
     if(info.phase==='traechtig') actions += `<button data-act="farrow" data-id="${sow.id}">Abferkelung eintragen</button>`;
     if(info.phase==='saugend') actions += `<button data-act="wean" data-id="${sow.id}">Absetzen eintragen</button>`;
     actions += `<button data-act="edit" data-id="${sow.id}" class="ghost">Bearbeiten</button>`;
+    actions += `<button data-act="abgang" data-id="${sow.id}" class="ghost">Abgang eintragen</button>`;
     actions += `<button data-act="del" data-id="${sow.id}" class="del">Löschen</button>`;
 
     card.innerHTML = `
@@ -940,6 +953,36 @@ function openTreatmentModal(sow, key){
       sow.treatments[key].female = document.getElementById('t-female').value || 0;
     }
     await persistSow(sow); closeModal(); render(); showToast(def.label + ' eingetragen');
+  };
+  overlay.classList.add('open');
+}
+
+function openAbgangModal(sow){
+  modalBox.innerHTML = `
+    <h3>Abgang eintragen – Sau ${sow.name}</h3>
+    <div class="stat-note" style="margin-bottom:10px;">Die Sau gilt danach als abgegangen und erscheint nicht mehr in der aktiven Liste.</div>
+    <div class="field"><label>Datum</label><input type="date" id="ab-date" value="${today()}"></div>
+    <div class="field">
+      <label>Grund</label>
+      <div class="radiorow">
+        <div class="radiopill sel" data-val="verkauft" id="ab-pill-sell">Verkauft</div>
+        <div class="radiopill" data-val="verendet" id="ab-pill-die">Verendet</div>
+      </div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-primary" id="ab-save">Speichern</button>
+      <button class="btn-secondary" id="ab-cancel">Abbrechen</button>
+    </div>
+  `;
+  let grund = 'verkauft';
+  document.getElementById('ab-pill-sell').onclick = ()=>{ grund='verkauft'; document.getElementById('ab-pill-sell').classList.add('sel'); document.getElementById('ab-pill-die').classList.remove('sel'); };
+  document.getElementById('ab-pill-die').onclick = ()=>{ grund='verendet'; document.getElementById('ab-pill-die').classList.add('sel'); document.getElementById('ab-pill-sell').classList.remove('sel'); };
+  document.getElementById('ab-cancel').onclick = closeModal;
+  document.getElementById('ab-save').onclick = async ()=>{
+    const date = document.getElementById('ab-date').value;
+    if(!date){ showToast('Bitte Datum angeben'); return; }
+    sow.abgang = { date, grund };
+    await persistSow(sow); closeModal(); render(); showToast('Abgang eingetragen');
   };
   overlay.classList.add('open');
 }
@@ -1227,6 +1270,7 @@ document.getElementById('list').addEventListener('click', async (e)=>{
   else if(act==='wean'){ openWeanModal(sow); }
   else if(act==='treat'){ openTreatmentModal(sow, btn.dataset.key); }
   else if(act==='edit'){ openEditSowModal(sow); }
+  else if(act==='abgang'){ openAbgangModal(sow); }
 });
 
 document.getElementById('filterRow').addEventListener('click', (e)=>{
@@ -1303,6 +1347,7 @@ document.getElementById('viewTabs').addEventListener('click', (e)=>{
   const showFerkel = currentView === 'ferkel';
   const showMast = currentView === 'mast';
   const showTierliste = currentView === 'tierliste';
+  const showVerkauf = currentView === 'verkauf';
   const showStats = currentView === 'stats';
   const showPlan = currentView === 'plan';
   document.getElementById('filterRow').style.display = showSows ? 'flex' : 'none';
@@ -1313,6 +1358,7 @@ document.getElementById('viewTabs').addEventListener('click', (e)=>{
   document.getElementById('ferkelView').style.display = showFerkel ? 'block' : 'none';
   document.getElementById('mastView').style.display = showMast ? 'block' : 'none';
   document.getElementById('tierlisteView').style.display = showTierliste ? 'block' : 'none';
+  document.getElementById('verkaufView').style.display = showVerkauf ? 'block' : 'none';
   document.getElementById('ferkelAddBar').style.display = showFerkel ? 'flex' : 'none';
   document.getElementById('mastAddBar').style.display = showMast ? 'flex' : 'none';
   if(!showFerkel) document.getElementById('ferkelAddPanel').classList.remove('open');
@@ -1322,6 +1368,7 @@ document.getElementById('viewTabs').addEventListener('click', (e)=>{
   if(!showSows) { panel.classList.remove('open'); document.getElementById('sowsTableView').style.display = 'none'; }
   if(showPlan) initPlanRange();
   if(showTierliste) initTierlisteYear();
+  if(showVerkauf) initVerkaufYear();
   refreshCurrentView();
 });
 
@@ -1329,6 +1376,7 @@ function refreshCurrentView(){
   if(currentView === 'stats') renderStats();
   else if(currentView === 'plan') renderArbeitsplan();
   else if(currentView === 'tierliste') renderTierliste();
+  else if(currentView === 'verkauf') renderVerkaufView();
   else if(currentView === 'ferkel') renderFerkelView();
   else if(currentView === 'mast') renderMastView();
   else render();
@@ -1707,7 +1755,6 @@ document.getElementById('printPlanBtn').addEventListener('click', ()=>{
 
 /* ================= FERKEL (Ferkelstall) ================= */
 const FERKEL_FUTTERWECHSEL_TAG = 14;
-let ferkelShowAll = false;
 
 function ferkelGruppeStats(g){
   const lossSum = (g.losses||[]).reduce((a,l)=>a+Number(l.count||0),0);
@@ -1744,14 +1791,10 @@ function renderFerkelView(){
         `).join('')}
       </div>
     </div>
-    <div class="filterrow" id="ferkelActiveToggle">
-      <button class="chip ${ferkelShowAll?'':'active'}" data-mode="active">Aktive Gruppen</button>
-      <button class="chip ${ferkelShowAll?'active':''}" data-mode="all">Alle (inkl. Archiv)</button>
-    </div>
   `;
-  const visible = ferkelShowAll ? ferkelGruppen : ferkelGruppen.filter(g=>ferkelGruppeStats(g).remaining > 0);
+  const visible = ferkelGruppen.filter(g=>ferkelGruppeStats(g).remaining > 0);
   if(!visible.length){
-    el.innerHTML = stallHtml + `<div class="empty"><div class="big">${ferkelShowAll ? 'Noch keine Ferkelgruppen' : 'Keine aktiven Ferkelgruppen'}</div>${ferkelShowAll ? 'Sobald bei einer Sau „Absetzen" eingetragen wird, erscheint hier automatisch eine neue Ferkelgruppe.' : 'Sobald Ferkel abgesetzt oder eingetragen werden, erscheinen sie hier.'}</div>`;
+    el.innerHTML = stallHtml + `<div class="empty"><div class="big">Keine aktiven Ferkelgruppen</div>Sobald Ferkel abgesetzt oder eingetragen werden, erscheinen sie hier.</div>`;
     return;
   }
   const sorted = visible.slice().sort((a,b)=> b.weanDate.localeCompare(a.weanDate));
@@ -1872,12 +1915,6 @@ function openFerkelOutflowModal(g){
 }
 
 document.getElementById('ferkelView').addEventListener('click', async (e)=>{
-  const chip = e.target.closest('#ferkelActiveToggle .chip');
-  if(chip){
-    ferkelShowAll = chip.dataset.mode === 'all';
-    renderFerkelView();
-    return;
-  }
   const btn = e.target.closest('button[data-act]');
   if(!btn) return;
   const id = btn.dataset.id;
@@ -1896,7 +1933,6 @@ document.getElementById('ferkelView').addEventListener('click', async (e)=>{
 
 /* ================= MAST ================= */
 // Ventil 8 und 9 gibt es nicht. Ventil 1, 10, 12 und 15 haben nur eine Bucht (A), alle anderen zwei (A+B).
-let mastShowAll = false;
 const MAST_PENS_CONFIG = {
   1: ['A'],
   2: ['A','B'],
@@ -1984,15 +2020,9 @@ function renderMastView(){
     el.innerHTML = belegplanHtml + `<div class="empty"><div class="big">Noch keine Mastgruppen</div>Sobald Ferkel im Ferkelstall auf „In die Mast" umgestallt werden, erscheinen sie hier.</div>`;
     return;
   }
-  const toggleHtml = `
-    <div class="filterrow" id="mastActiveToggle">
-      <button class="chip ${mastShowAll?'':'active'}" data-mode="active">Aktive Buchten</button>
-      <button class="chip ${mastShowAll?'active':''}" data-mode="all">Alle (inkl. Archiv)</button>
-    </div>
-  `;
-  const visible = mastShowAll ? mastGruppen : mastGruppen.filter(g=>g.ventil!=null && mastGruppeStats(g).remaining > 0);
+  const visible = mastGruppen.filter(g=>g.ventil!=null && mastGruppeStats(g).remaining > 0);
   if(!visible.length){
-    el.innerHTML = belegplanHtml + toggleHtml + `<div class="empty"><div class="big">Keine aktiven Mastgruppen</div>Sobald Tiere umgestallt oder eingetragen werden, erscheinen sie hier.</div>`;
+    el.innerHTML = belegplanHtml + `<div class="empty"><div class="big">Keine aktiven Mastgruppen</div>Sobald Tiere umgestallt oder eingetragen werden, erscheinen sie hier.</div>`;
     return;
   }
   const sorted = visible.slice().sort((a,b)=> (a.ventil-b.ventil) || (a.bucht||'').localeCompare(b.bucht||''));
@@ -2017,7 +2047,7 @@ function renderMastView(){
       </div>
     </div>`;
   }).join('');
-  el.innerHTML = belegplanHtml + toggleHtml + cardsHtml;
+  el.innerHTML = belegplanHtml + cardsHtml;
 }
 
 function openMastLossModal(g){
@@ -2144,12 +2174,6 @@ function openMastMoveModal(g){
 }
 
 document.getElementById('mastView').addEventListener('click', async (e)=>{
-  const chip = e.target.closest('#mastActiveToggle .chip');
-  if(chip){
-    mastShowAll = chip.dataset.mode === 'all';
-    renderMastView();
-    return;
-  }
   const btn = e.target.closest('button[data-act]');
   if(!btn) return;
   const id = btn.dataset.id;
@@ -2238,6 +2262,82 @@ document.getElementById('mg-save').addEventListener('click', async ()=>{
 });
 
 /* ================= TIERLISTE (Jahresdurchschnittsbestand) ================= */
+/* ---------- generischer Wochen-Ledger fuer beliebige Tierkategorien ---------- */
+function buildWeeklyLedger(tx, year, flowTypes){
+  const yearStart = `${year}-01-01`;
+  const nextYearStart = `${year+1}-01-01`;
+
+  let anfangsbestand = 0;
+  tx.forEach(t=>{
+    if(t.date < yearStart) anfangsbestand += (t.type==='zugang') ? t.count : -t.count;
+  });
+
+  const weeks = [];
+  for(let w=1; w<=52; w++){
+    const week = { week:w, zugang:0 };
+    flowTypes.forEach(f=> week[f.key]=0);
+    weeks.push(week);
+  }
+
+  tx.forEach(t=>{
+    if(t.date >= yearStart && t.date < nextYearStart){
+      const dayOfYear = daysBetween(yearStart, t.date) + 1;
+      const idx = Math.min(Math.ceil(dayOfYear/7), 52) - 1;
+      if(t.type==='zugang') weeks[idx].zugang += t.count;
+      else {
+        const f = flowTypes.find(f=>f.txType===t.type);
+        if(f) weeks[idx][f.key] += t.count;
+      }
+    }
+  });
+
+  let running = anfangsbestand, sumBestand = 0;
+  weeks.forEach(w=>{
+    let out = 0;
+    flowTypes.forEach(f=> out += w[f.key]);
+    running += w.zugang - out;
+    w.bestand = running;
+    sumBestand += running;
+  });
+
+  const totals = { zugang: weeks.reduce((a,w)=>a+w.zugang,0) };
+  flowTypes.forEach(f=> totals[f.key] = weeks.reduce((a,w)=>a+w[f.key],0));
+
+  return { year, anfangsbestand, weeks, totals, sumBestand, jahresdurchschnitt: sumBestand/52 };
+}
+
+function collectSauenTransactions(){
+  const tx = [];
+  sows.forEach(s=>{
+    if(s.purchaseDate) tx.push({ date:s.purchaseDate, type:'zugang', count:1 });
+    if(s.abgang) tx.push({ date:s.abgang.date, type:(s.abgang.grund==='verkauft'?'verkauft':'verendet'), count:1 });
+  });
+  return tx;
+}
+function computeSauenTierliste(year){
+  return buildWeeklyLedger(collectSauenTransactions(), year, [
+    { key:'verkauft', txType:'verkauft' }, { key:'verendet', txType:'verendet' }
+  ]);
+}
+
+function collectFerkelTransactions(){
+  const tx = [];
+  ferkelGruppen.forEach(g=>{
+    if(g.weanDate) tx.push({ date:g.weanDate, type:'zugang', count:Number(g.initialCount||0) });
+    (g.losses||[]).forEach(l=> tx.push({ date:l.date, type:'verendet', count:Number(l.count||0) }));
+    (g.outflows||[]).forEach(o=>{
+      if(o.destination==='verkauft') tx.push({ date:o.date, type:'verkauft', count:Number(o.count||0) });
+      else if(o.destination==='mast') tx.push({ date:o.date, type:'mast', count:Number(o.count||0) });
+    });
+  });
+  return tx;
+}
+function computeFerkelTierliste(year){
+  return buildWeeklyLedger(collectFerkelTransactions(), year, [
+    { key:'verkauft', txType:'verkauft' }, { key:'verendet', txType:'verendet' }, { key:'mast', txType:'mast' }
+  ]);
+}
+
 function collectMastTransactions(){
   const tx = [];
   mastGruppen.forEach(g=>{
@@ -2339,17 +2439,48 @@ function computeVerkaufsstatistik(year){
   return { year, sales, stueck, gesamtpreis, amaStueck, amaAnteil, basispreisAvg, mfaAvg, gewichtAvg, durchschnPreis };
 }
 
+function renderLedgerSection(title, ledger, columnDefs){
+  return `
+    <div class="stat-section">
+      <h3>${title}</h3>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-value">${ledger.anfangsbestand}</div><div class="stat-label">Anfangsbestand 1. Jänner</div></div>
+        <div class="stat-card"><div class="stat-value">${ledger.jahresdurchschnitt.toFixed(2)}</div><div class="stat-label">Jahresdurchschnittsbestand</div></div>
+      </div>
+    </div>
+    <div class="stats-table-wrap"><table class="stats-table">
+      <thead><tr><th>Woche</th><th>Zugang</th>${columnDefs.map(c=>`<th>${c.label}</th>`).join('')}<th>Bestand</th></tr></thead>
+      <tbody>
+        ${ledger.weeks.map(w=>`<tr><td>${w.week}</td><td>${w.zugang||''}</td>${columnDefs.map(c=>`<td>${w[c.key]||''}</td>`).join('')}<td><b>${w.bestand}</b></td></tr>`).join('')}
+        <tr><td><b>Summe</b></td><td><b>${ledger.totals.zugang}</b></td>${columnDefs.map(c=>`<td><b>${ledger.totals[c.key]}</b></td>`).join('')}<td><b>${ledger.sumBestand}</b></td></tr>
+      </tbody>
+    </table></div>
+    <div class="stat-note" style="margin:8px 0 20px;">Jahresdurchschnittsbestand = Summe der Wochenbestände (${ledger.sumBestand}) / 52 = <b>${ledger.jahresdurchschnitt.toFixed(2)}</b></div>
+  `;
+}
+
 function renderTierliste(){
   const year = Number(document.getElementById('tl-year').value) || new Date(today()).getFullYear();
+  const sauenLedger = computeSauenTierliste(year);
+  const ferkelLedger = computeFerkelTierliste(year);
   const d = computeTierliste(year);
   const v = computeVerkaufsstatistik(year);
   const el = document.getElementById('tierlisteResults');
   const f2 = n => n==null ? '–' : n.toFixed(2);
 
   el.innerHTML = `
-    <div class="print-only">Tierliste ${year} – Jahresdurchschnittsbestand Mastschweine</div>
+    <div class="print-only">Tierliste ${year} – Jahresdurchschnittsbestand Zuchtschweine, Ferkel und Mastschweine</div>
+
+    ${renderLedgerSection(`Formblatt ${year} – Zuchtschweine (Sauen)`, sauenLedger, [
+      { key:'verkauft', label:'Verkauf' }, { key:'verendet', label:'Verendung' }
+    ])}
+
+    ${renderLedgerSection(`Formblatt ${year} – Ferkel`, ferkelLedger, [
+      { key:'verkauft', label:'Verkauf' }, { key:'verendet', label:'Verendung' }, { key:'mast', label:'Umstallung Mast' }
+    ])}
+
     <div class="stat-section">
-      <h3>Formblatt ${year} – Ermittlung des Jahresdurchschnittbestandes</h3>
+      <h3>Formblatt ${year} – Ermittlung des Jahresdurchschnittbestandes (Mastschweine)</h3>
       <div class="stat-grid">
         <div class="stat-card"><div class="stat-value">${d.anfangsbestand}</div><div class="stat-label">Anfangsbestand 1. Jänner</div></div>
         <div class="stat-card"><div class="stat-value">${d.jahresdurchschnitt.toFixed(2)}</div><div class="stat-label">Jahresdurchschnittsbestand</div></div>
@@ -2375,11 +2506,41 @@ function renderTierliste(){
         <div class="stat-card"><div class="stat-value">${d.ferkelEig}</div><div class="stat-label">Ferkel Eigenbedarf (in Mast)</div></div>
         <div class="stat-card"><div class="stat-value">${d.gesFerkel}</div><div class="stat-label">Ges. Ferkel</div></div>
       </div>
-      <div class="stat-note">Verendung entspricht den bei den Mastschweinen eingetragenen Verlusten.</div>
+      <div class="stat-note">Verendung entspricht den bei den Mastschweinen eingetragenen Verlusten. Die detaillierte Verkaufsstatistik (Preise, Mfa%, Gewicht) findest du im Reiter „Verkauf".</div>
     </div>
+  `;
+}
 
+document.getElementById('tl-year').addEventListener('change', renderTierliste);
+document.getElementById('printTierlisteBtn').addEventListener('click', ()=> window.print());
+
+function initVerkaufYear(){
+  const el = document.getElementById('vk-year');
+  if(!el.value) el.value = new Date(today()).getFullYear();
+}
+
+function renderVerkaufView(){
+  const year = Number(document.getElementById('vk-year').value) || new Date(today()).getFullYear();
+  const v = computeVerkaufsstatistik(year);
+  const el = document.getElementById('verkaufResults');
+  const f2 = n => n==null ? '–' : n.toFixed(2);
+
+  const rowsHtml = v.sales.map((s,i)=>`<tr>
+    <td>${i+1}</td>
+    <td>${fmt(s.date)}</td>
+    <td>${s.basispreis ?? '–'}</td>
+    <td>${s.mfa ?? '–'}</td>
+    <td>${s.gewicht ?? '–'}</td>
+    <td>${s.count}</td>
+    <td>${s.amaCount ?? '–'}</td>
+    <td>${s.gesamtpreis ?? '–'}</td>
+    <td>${s.sowName}${s.ventil ? ` (V${s.ventil}/${s.bucht})` : ''}</td>
+  </tr>`).join('');
+
+  el.innerHTML = `
+    <div class="print-only">Verkaufsliste Mastschweine ${year}</div>
     <div class="stat-section">
-      <h3>Verkaufsstatistik Mastschweine ${year}</h3>
+      <h3>Mastschweine-Verkauf ${year}</h3>
       <div class="stat-grid">
         <div class="stat-card"><div class="stat-value">${v.stueck}</div><div class="stat-label">Stück verkauft</div></div>
         <div class="stat-card"><div class="stat-value">${f2(v.basispreisAvg)}</div><div class="stat-label">Ø Basispreis (€/kg)</div></div>
@@ -2390,22 +2551,34 @@ function renderTierliste(){
         <div class="stat-card"><div class="stat-value">${f2(v.durchschnPreis)}</div><div class="stat-label">Ø Preis / Stück (€)</div></div>
         <div class="stat-card"><div class="stat-value">${f2(v.gesamtpreis)}</div><div class="stat-label">Gesamterlös (€)</div></div>
       </div>
-      ${v.sales.length ? `
-      <div class="stats-table-wrap" style="margin-top:12px;"><table class="stats-table">
-        <thead><tr><th>Datum</th><th>Herkunft</th><th>Stück</th><th>Basispreis</th><th>Mfa%</th><th>Gewicht</th><th>Ama St.</th><th>Gesamtpreis</th></tr></thead>
-        <tbody>
-          ${v.sales.map(s=>`<tr>
-            <td>${fmt(s.date)}</td><td>${s.sowName}${s.ventil?` (V${s.ventil}/${s.bucht})`:''}</td><td>${s.count}</td>
-            <td>${s.basispreis ?? '–'}</td><td>${s.mfa ?? '–'}</td><td>${s.gewicht ?? '–'}</td><td>${s.amaCount ?? '–'}</td><td>${s.gesamtpreis ?? '–'}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table></div>` : '<div class="stat-note">Noch keine Verkäufe mit Preisdaten in diesem Jahr.</div>'}
     </div>
+    ${v.sales.length ? `
+    <div class="stats-table-wrap"><table class="stats-table">
+      <thead><tr>
+        <th>Nr</th><th>Datum</th><th>Basispreis</th><th>Mfa%</th><th>Gewicht</th><th>Stück</th><th>Ama St.</th><th>Gesamtpreis</th><th>Herkunft</th>
+      </tr></thead>
+      <tbody>
+        ${rowsHtml}
+        <tr>
+          <td colspan="2"><b>Summe / Ø</b></td>
+          <td><b>${f2(v.basispreisAvg)}</b></td>
+          <td><b>${f2(v.mfaAvg)}</b></td>
+          <td><b>${f2(v.gewichtAvg)}</b></td>
+          <td><b>${v.stueck}</b></td>
+          <td><b>${v.amaStueck}</b></td>
+          <td><b>${f2(v.gesamtpreis)}</b></td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table></div>
+    <div class="stat-note" style="margin-top:8px;">Ø-Werte je Lieferung berechnet (nicht nach Stückzahl gewichtet) – entspricht der ursprünglichen Excel-Vorlage.</div>
+    ` : '<div class="empty"><div class="big">Noch keine Verkäufe mit Preisdaten</div>Für dieses Jahr wurden noch keine Verkäufe mit Basispreis/Gewicht/Mfa% erfasst.</div>'}
   `;
 }
 
-document.getElementById('tl-year').addEventListener('change', renderTierliste);
-document.getElementById('printTierlisteBtn').addEventListener('click', ()=> window.print());
+document.getElementById('vk-year').addEventListener('change', renderVerkaufView);
+document.getElementById('printVerkaufBtn').addEventListener('click', ()=> window.print());
+
 
 loadAll();
 setInterval(loadAll, 20000);
