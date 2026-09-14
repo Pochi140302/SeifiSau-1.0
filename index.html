@@ -458,16 +458,18 @@ async function deleteRecordRemote(tableName, id){
 
 let ferkelGruppen = [];
 let mastGruppen = [];
+let sauenKorrekturen = [];
 
 async function loadFerkelGruppen(){ ferkelGruppen = await loadTable('ferkel_gruppen'); }
 async function loadMastGruppen(){ mastGruppen = await loadTable('mast_gruppen'); }
+async function loadSauenKorrekturen(){ sauenKorrekturen = await loadTable('sauen_korrekturen'); }
 async function persistFerkelGruppe(g){ await persistRecord('ferkel_gruppen', g); }
 async function persistMastGruppe(g){ await persistRecord('mast_gruppen', g); }
 async function deleteFerkelGruppeRemote(id){ await deleteRecordRemote('ferkel_gruppen', id); }
 async function deleteMastGruppeRemote(id){ await deleteRecordRemote('mast_gruppen', id); }
 
 async function loadAll(){
-  await Promise.all([ loadSows(), loadFerkelGruppen(), loadMastGruppen() ]);
+  await Promise.all([ loadSows(), loadFerkelGruppen(), loadMastGruppen(), loadSauenKorrekturen() ]);
   refreshCurrentView();
 }
 
@@ -2315,6 +2317,9 @@ function collectSauenTransactions(){
   sows.forEach(s=>{
     if(s.purchaseDate) tx.push({ date:s.purchaseDate, type:'zugang', count:1 });
     if(s.abgang) tx.push({ date:s.abgang.date, type:(s.abgang.grund==='verkauft'?'verkauft':'verendet'), count:1 });
+  });
+  sauenKorrekturen.forEach(k=>{
+    tx.push({ date:k.date, type:k.type, count:Number(k.count||0) });
   });
   return tx;
 }
