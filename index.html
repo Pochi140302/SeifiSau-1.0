@@ -2087,8 +2087,11 @@ function openMastSaleModal(g){
       <div class="field"><label>Ø Gewicht (kg)</label><input type="number" step="0.1" id="ms-gewicht"></div>
       <div class="field"><label>Ama-Gütesiegel Stück</label><input type="number" min="0" id="ms-ama"></div>
     </div>
-    <div class="field"><label>Gesamtpreis (€)</label><input type="number" step="0.01" id="ms-gesamtpreis"></div>
-    <div class="stat-note">Preis-/Qualitätsangaben sind optional, werden aber für die Verkaufsstatistik in der Tierliste ausgewertet.</div>
+    <div class="field-row">
+      <div class="field"><label>Gesamtpreis (€)</label><input type="number" step="0.01" id="ms-gesamtpreis"></div>
+      <div class="field"><label>Euro / KG (optional)</label><input type="number" step="0.01" id="ms-eurokg"></div>
+    </div>
+    <div class="stat-note">Preis-/Qualitätsangaben sind optional, werden aber für die Verkaufsstatistik ausgewertet.</div>
     <div class="modal-btns">
       <button class="btn-primary" id="ms-save">Speichern</button>
       <button class="btn-secondary" id="ms-cancel">Abbrechen</button>
@@ -2108,7 +2111,8 @@ function openMastSaleModal(g){
       mfa: numOrNull(document.getElementById('ms-mfa').value),
       gewicht: numOrNull(document.getElementById('ms-gewicht').value),
       amaCount: numOrNull(document.getElementById('ms-ama').value),
-      gesamtpreis: numOrNull(document.getElementById('ms-gesamtpreis').value)
+      gesamtpreis: numOrNull(document.getElementById('ms-gesamtpreis').value),
+      euroKg: numOrNull(document.getElementById('ms-eurokg').value)
     });
     await persistMastGruppe(g); closeModal(); renderMastView(); showToast('Verkauf eingetragen');
   };
@@ -2434,9 +2438,16 @@ function computeVerkaufsstatistik(year){
   const basispreisAvg = simpleAvg('basispreis');
   const mfaAvg = simpleAvg('mfa');
   const gewichtAvg = simpleAvg('gewicht');
+  const euroKgAvg = simpleAvg('euroKg');
   const durchschnPreis = stueck ? gesamtpreis/stueck : null;
 
-  return { year, sales, stueck, gesamtpreis, amaStueck, amaAnteil, basispreisAvg, mfaAvg, gewichtAvg, durchschnPreis };
+  sales.forEach(s=>{
+    const dayOfYear = daysBetween(yearStart, s.date) + 1;
+    s.woche = Math.min(Math.ceil(dayOfYear/7), 52);
+    s.pStueck = (s.gesamtpreis!=null && s.count) ? Number(s.gesamtpreis)/Number(s.count) : null;
+  });
+
+  return { year, sales, stueck, gesamtpreis, amaStueck, amaAnteil, basispreisAvg, mfaAvg, gewichtAvg, euroKgAvg, durchschnPreis };
 }
 
 function renderLedgerSection(title, ledger, columnDefs){
@@ -2528,12 +2539,15 @@ function renderVerkaufView(){
   const rowsHtml = v.sales.map((s,i)=>`<tr>
     <td>${i+1}</td>
     <td>${fmt(s.date)}</td>
-    <td>${s.basispreis ?? '–'}</td>
-    <td>${s.mfa ?? '–'}</td>
-    <td>${s.gewicht ?? '–'}</td>
+    <td>${s.woche}</td>
+    <td>${f2(s.basispreis)}</td>
+    <td>${f2(s.mfa)}</td>
+    <td>${f2(s.gewicht)}</td>
     <td>${s.count}</td>
     <td>${s.amaCount ?? '–'}</td>
-    <td>${s.gesamtpreis ?? '–'}</td>
+    <td>${s.gesamtpreis!=null ? f2(s.gesamtpreis)+' €' : '–'}</td>
+    <td>${s.pStueck!=null ? f2(s.pStueck)+' €' : '–'}</td>
+    <td>${s.euroKg!=null ? f2(s.euroKg)+' €' : '–'}</td>
     <td>${s.sowName}${s.ventil ? ` (V${s.ventil}/${s.bucht})` : ''}</td>
   </tr>`).join('');
 
@@ -2555,18 +2569,20 @@ function renderVerkaufView(){
     ${v.sales.length ? `
     <div class="stats-table-wrap"><table class="stats-table">
       <thead><tr>
-        <th>Nr</th><th>Datum</th><th>Basispreis</th><th>Mfa%</th><th>Gewicht</th><th>Stück</th><th>Ama St.</th><th>Gesamtpreis</th><th>Herkunft</th>
+        <th>Nr</th><th>Datum</th><th>Woche</th><th>Basispreis</th><th>Mfa%</th><th>Gewicht</th><th>Stück</th><th>Ama St.</th><th>Gesamtpreis</th><th>P/Stück</th><th>Euro KG</th><th>Herkunft</th>
       </tr></thead>
       <tbody>
         ${rowsHtml}
         <tr>
-          <td colspan="2"><b>Summe / Ø</b></td>
+          <td colspan="3"><b>Summe / Ø</b></td>
           <td><b>${f2(v.basispreisAvg)}</b></td>
           <td><b>${f2(v.mfaAvg)}</b></td>
           <td><b>${f2(v.gewichtAvg)}</b></td>
           <td><b>${v.stueck}</b></td>
           <td><b>${v.amaStueck}</b></td>
-          <td><b>${f2(v.gesamtpreis)}</b></td>
+          <td><b>${f2(v.gesamtpreis)} €</b></td>
+          <td><b>${f2(v.durchschnPreis)} €</b></td>
+          <td><b>${v.euroKgAvg!=null ? f2(v.euroKgAvg)+' €' : '–'}</b></td>
           <td></td>
         </tr>
       </tbody>
