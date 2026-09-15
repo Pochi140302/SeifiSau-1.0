@@ -244,6 +244,10 @@
       </div>
     </div>
     <div class="field">
+      <label>Bucht auswählen</label>
+      <select id="fg-pen"></select>
+    </div>
+    <div class="field">
       <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
         <input type="checkbox" id="fg-noverschnitt" style="width:auto;">
         Bekommt kein Verschnittfutter mehr (Übergangsphase bereits vorbei)
@@ -1206,10 +1210,16 @@ function openEditSowModal(sow){
 }
 
 function openWeanModal(sow){
+  const stall1Pens = ferkelPensStatus().filter(p=>String(p.stall)==='1');
+  const penOptionsHtml = stall1Pens.map(p=>{
+    const label = p.occupant ? `Bucht ${p.bucht} – belegt (${p.sowNames}, ${p.remaining} Tiere)` : `Bucht ${p.bucht} – frei`;
+    return `<option value="${p.bucht}">${label}</option>`;
+  }).join('');
   modalBox.innerHTML = `
     <h3>Absetzen eintragen</h3>
     <div class="field"><label>Datum</label><input type="date" id="w-date" value="${today()}"></div>
     <div class="field"><label>Anzahl abgesetzter Ferkel</label><input type="number" min="0" id="w-count"></div>
+    <div class="field"><label>Bucht im Ferkelstall 1 auswählen</label><select id="w-pen">${penOptionsHtml}</select></div>
     <div class="modal-btns">
       <button class="btn-primary" id="w-save">Speichern</button>
       <button class="btn-secondary" id="w-cancel">Abbrechen</button>
@@ -1240,9 +1250,16 @@ function openWeanModal(sow){
 
     // automatisch neue Ferkelgruppe im Ferkelstall anlegen
     if(count > 0){
+      const bucht = Number(document.getElementById('w-pen').value);
+      const pen = ferkelPensStatus().find(p=>String(p.stall)==='1' && p.bucht===bucht);
+      if(pen && pen.occupant){
+        if(!confirm(`Bucht ${bucht} in Ferkelstall 1 ist bereits belegt (${pen.sowNames}, ${pen.remaining} Tiere). Trotzdem verwenden?`)){
+          closeModal(); render(); return;
+        }
+      }
       const gruppe = {
         id: 'fg_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
-        sowName: sow.name, weanDate: date, initialCount: count,
+        sowName: sow.name, weanDate: date, initialCount: count, stall: '1', bucht,
         losses: [], outflows: []
       };
       ferkelGruppen.push(gruppe);
@@ -1761,6 +1778,33 @@ document.getElementById('printPlanBtn').addEventListener('click', ()=>{
 /* ================= FERKEL (Ferkelstall) ================= */
 const FERKEL_FUTTERWECHSEL_TAG = 14;
 
+// Ferkelstall 1 (Aufzuchtstall, Futterumstellung/Verschnitt beim Einstallen) hat 6 feste Buchten.
+// Ferkelstall 2 (Vormaststall) hat 4 feste Buchten; hier werden Ferkel aus verschiedenen
+// Herkunfts-Gruppen zusammengestallt, wie es sich ergibt (mehrere Belegungen je Bucht möglich).
+const FERKEL_PENS_CONFIG = {
+  1: [1,2,3,4,5,6],
+  2: [1,2,3,4]
+};
+
+function allFerkelPens(){
+  const pens = [];
+  Object.keys(FERKEL_PENS_CONFIG).forEach(sStr=>{
+    const s = Number(sStr);
+    FERKEL_PENS_CONFIG[sStr].forEach(b=> pens.push({ stall:s, bucht:b }));
+  });
+  return pens;
+}
+
+function ferkelPensStatus(){
+  return allFerkelPens().map(p=>{
+    const occupants = ferkelGruppen.filter(g => String(g.stall)===String(p.stall) && Number(g.bucht)===p.bucht && ferkelGruppeStats(g).remaining > 0);
+    const total = occupants.reduce((a,g)=>a+ferkelGruppeStats(g).remaining, 0);
+    const occupant = occupants[0] || null;
+    const sowNames = occupants.map(g=>g.sowName).join(', ');
+    return { ...p, occupant, occupants, remaining: total, sowNames };
+  });
+}
+
 function ferkelGruppeStats(g){
   const lossSum = (g.losses||[]).reduce((a,l)=>a+Number(l.count||0),0);
   const outSum = (g.outflows||[]).reduce((a,o)=>a+Number(o.count||0),0);
@@ -1797,18 +1841,39 @@ function renderFerkelView(){
       </div>
     </div>
   `;
+  const pens = ferkelPensStatus();
+  const belegt = pens.filter(p=>p.occupant).length;
+  const belegplanHtml = `
+    <div class="stat-section">
+      <h3>Belegplan <span style="font-weight:400;color:var(--ink-soft);font-size:0.8rem;">(${belegt} / ${pens.length} Buchten belegt)</span></h3>
+      <div class="stats-table-wrap"><table class="stats-table">
+        <thead><tr><th>Stall</th><th>Bucht</th><th>Status</th><th>Herkunft</th><th>Anzahl</th></tr></thead>
+        <tbody>
+          ${pens.map(p=>`<tr>
+            <td>${p.stall}</td>
+            <td>${p.bucht}</td>
+            <td>${p.occupant ? 'belegt' : 'frei'}</td>
+            <td>${p.occupant ? p.sowNames : '–'}</td>
+            <td>${p.occupant ? p.remaining : '–'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>
+  `;
+
   const visible = ferkelGruppen.filter(g=>ferkelGruppeStats(g).remaining > 0);
   if(!visible.length){
-    el.innerHTML = stallHtml + `<div class="empty"><div class="big">Keine aktiven Ferkelgruppen</div>Sobald Ferkel abgesetzt oder eingetragen werden, erscheinen sie hier.</div>`;
+    el.innerHTML = stallHtml + belegplanHtml + `<div class="empty"><div class="big">Keine aktiven Ferkelgruppen</div>Sobald Ferkel abgesetzt oder eingetragen werden, erscheinen sie hier.</div>`;
     return;
   }
   const sorted = visible.slice().sort((a,b)=> b.weanDate.localeCompare(a.weanDate));
   const cardsHtml = sorted.map(g=>{
     const st = ferkelGruppeStats(g);
     const cls = st.verschnitt ? 'due-soon' : '';
+    const penLabel = `Stall ${g.stall||'1'}${g.bucht!=null ? ' · Bucht '+g.bucht : ' · Bucht nicht zugewiesen'}`;
     return `<div class="card ${cls}">
       <div class="card-top">
-        <div class="card-name-wrap"><span class="card-name">Sau ${g.sowName}</span><span class="cycle-tag">Stall ${g.stall||'1'} · ${st.remaining} / ${g.initialCount}</span></div>
+        <div class="card-name-wrap"><span class="card-name">Sau ${g.sowName}</span><span class="cycle-tag">${penLabel} · ${st.remaining} / ${g.initialCount}</span></div>
         <span class="status-tag ${st.verschnitt?'soon':''}">${st.verschnitt ? 'Verschnittfutter (Tag '+st.daysSince+')' : 'Normalfutter'}</span>
       </div>
       <div class="biorow">Eingestallt am ${fmt(g.weanDate)}</div>
@@ -1820,11 +1885,12 @@ function renderFerkelView(){
       <div class="card-actions">
         <button data-act="fLoss" data-id="${g.id}">Verlust eintragen</button>
         <button data-act="fOut" data-id="${g.id}">Verkauf / Umstallung eintragen</button>
+        <button data-act="fEdit" data-id="${g.id}" class="ghost">Bearbeiten</button>
         <button data-act="fDel" data-id="${g.id}" class="del">Gruppe löschen</button>
       </div>
     </div>`;
   }).join('');
-  el.innerHTML = stallHtml + cardsHtml;
+  el.innerHTML = stallHtml + belegplanHtml + cardsHtml;
 }
 
 function openFerkelLossModal(g){
@@ -1919,6 +1985,65 @@ function openFerkelOutflowModal(g){
   overlay.classList.add('open');
 }
 
+function openFerkelEditModal(g){
+  const currentStall = g.stall!=null ? String(g.stall) : '1';
+  const currentBucht = g.bucht!=null ? Number(g.bucht) : null;
+  const pens = ferkelPensStatus();
+  const penOptionsHtml = pens.map(p=>{
+    const isCurrent = String(p.stall)===currentStall && p.bucht===currentBucht;
+    const label = isCurrent
+      ? `Stall ${p.stall} / Bucht ${p.bucht} – aktuell`
+      : (p.occupant ? `Stall ${p.stall} / Bucht ${p.bucht} – belegt (${p.sowNames}, ${p.remaining} Tiere)` : `Stall ${p.stall} / Bucht ${p.bucht} – frei`);
+    return `<option value="${p.stall}-${p.bucht}" ${isCurrent?'selected':''}>${label}</option>`;
+  }).join('');
+
+  modalBox.innerHTML = `
+    <h3>Ferkelgruppe bearbeiten</h3>
+    <div class="field"><label>Herkunft (Sau / Bezeichnung)</label><input type="text" id="fe-sow" value="${g.sowName||''}"></div>
+    <div class="field"><label>Einstalldatum (Absetzdatum)</label><input type="date" id="fe-date" value="${g.weanDate||''}"></div>
+    <div class="field"><label>Anzahl Ferkel (Einstallung)</label><input type="number" min="1" id="fe-count" value="${g.initialCount??''}"></div>
+    <div class="field">
+      <label>Stall / Bucht</label>
+      <select id="fe-pen">${penOptionsHtml}</select>
+    </div>
+    <div class="field">
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+        <input type="checkbox" id="fe-noverschnitt" style="width:auto;" ${g.noVerschnitt?'checked':''}>
+        Bekommt kein Verschnittfutter mehr (Übergangsphase bereits vorbei)
+      </label>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-primary" id="fe-save">Speichern</button>
+      <button class="btn-secondary" id="fe-cancel">Abbrechen</button>
+    </div>
+  `;
+  document.getElementById('fe-cancel').onclick = closeModal;
+  document.getElementById('fe-save').onclick = async ()=>{
+    const sowName = document.getElementById('fe-sow').value.trim() || 'Bestand';
+    const date = document.getElementById('fe-date').value;
+    const count = Number(document.getElementById('fe-count').value || 0);
+    const noVerschnitt = document.getElementById('fe-noverschnitt').checked;
+    if(!date || count<=0){ showToast('Bitte Datum und Anzahl angeben'); return; }
+    const abgaenge = (g.losses||[]).reduce((a,l)=>a+Number(l.count||0),0) + (g.outflows||[]).reduce((a,o)=>a+Number(o.count||0),0);
+    if(count < abgaenge){ showToast(`Anzahl darf nicht kleiner sein als bereits verbuchte Abgänge (${abgaenge})`); return; }
+
+    const [sRaw, bRaw] = document.getElementById('fe-pen').value.split('-');
+    const stall = sRaw, bucht = Number(bRaw);
+    const changingPen = !(stall===currentStall && bucht===currentBucht);
+    if(changingPen){
+      const targetPen = ferkelPensStatus().find(p=>String(p.stall)===stall && p.bucht===bucht);
+      if(targetPen && targetPen.occupant){
+        if(!confirm(`Stall ${stall} / Bucht ${bucht} ist bereits belegt (${targetPen.sowNames}, ${targetPen.remaining} Tiere). Trotzdem verwenden?`)) return;
+      }
+    }
+
+    g.sowName = sowName; g.weanDate = date; g.initialCount = count; g.stall = stall; g.bucht = bucht; g.noVerschnitt = noVerschnitt;
+    await persistFerkelGruppe(g);
+    closeModal(); renderFerkelView(); showToast('Ferkelgruppe aktualisiert');
+  };
+  overlay.classList.add('open');
+}
+
 document.getElementById('ferkelView').addEventListener('click', async (e)=>{
   const btn = e.target.closest('button[data-act]');
   if(!btn) return;
@@ -1928,6 +2053,7 @@ document.getElementById('ferkelView').addEventListener('click', async (e)=>{
   const act = btn.dataset.act;
   if(act==='fLoss'){ openFerkelLossModal(g); }
   else if(act==='fOut'){ openFerkelOutflowModal(g); }
+  else if(act==='fEdit'){ openFerkelEditModal(g); }
   else if(act==='fDel'){
     if(confirm(`Ferkelgruppe von Sau ${g.sowName} wirklich löschen?`)){
       ferkelGruppen = ferkelGruppen.filter(x=>x.id!==id);
@@ -2208,12 +2334,19 @@ document.getElementById('mastView').addEventListener('click', async (e)=>{
 /* ---------- Bestand einpflegen: Ferkel ---------- */
 const ferkelAddPanel = document.getElementById('ferkelAddPanel');
 let fgStall = '1';
-document.getElementById('fg-pill-s1').addEventListener('click', ()=>{ fgStall='1'; document.getElementById('fg-pill-s1').classList.add('sel'); document.getElementById('fg-pill-s2').classList.remove('sel'); });
-document.getElementById('fg-pill-s2').addEventListener('click', ()=>{ fgStall='2'; document.getElementById('fg-pill-s2').classList.add('sel'); document.getElementById('fg-pill-s1').classList.remove('sel'); });
+function refreshFgPenOptions(){
+  const pens = ferkelPensStatus().filter(p=>String(p.stall)===String(fgStall));
+  document.getElementById('fg-pen').innerHTML = pens.map(p=>{
+    const label = p.occupant ? `Bucht ${p.bucht} – belegt (${p.sowNames}, ${p.remaining} Tiere)` : `Bucht ${p.bucht} – frei`;
+    return `<option value="${p.bucht}">${label}</option>`;
+  }).join('');
+}
+document.getElementById('fg-pill-s1').addEventListener('click', ()=>{ fgStall='1'; document.getElementById('fg-pill-s1').classList.add('sel'); document.getElementById('fg-pill-s2').classList.remove('sel'); refreshFgPenOptions(); });
+document.getElementById('fg-pill-s2').addEventListener('click', ()=>{ fgStall='2'; document.getElementById('fg-pill-s2').classList.add('sel'); document.getElementById('fg-pill-s1').classList.remove('sel'); refreshFgPenOptions(); });
 
 document.getElementById('toggleFerkelAdd').addEventListener('click', ()=>{
   ferkelAddPanel.classList.toggle('open');
-  if(ferkelAddPanel.classList.contains('open')) document.getElementById('fg-date').value = today();
+  if(ferkelAddPanel.classList.contains('open')){ document.getElementById('fg-date').value = today(); refreshFgPenOptions(); }
 });
 document.getElementById('fg-cancel').addEventListener('click', ()=>{
   ferkelAddPanel.classList.remove('open');
@@ -2224,9 +2357,15 @@ document.getElementById('fg-save').addEventListener('click', async ()=>{
   const count = Number(document.getElementById('fg-count').value || 0);
   const noVerschnitt = document.getElementById('fg-noverschnitt').checked;
   if(!date || count<=0){ showToast('Bitte Datum und Anzahl angeben'); return; }
+  const penVal = document.getElementById('fg-pen').value;
+  const bucht = Number(penVal);
+  const pen = ferkelPensStatus().find(p=>String(p.stall)===String(fgStall) && p.bucht===bucht);
+  if(pen && pen.occupant){
+    if(!confirm(`Stall ${fgStall} / Bucht ${bucht} ist bereits belegt (${pen.sowNames}, ${pen.remaining} Tiere). Trotzdem verwenden?`)) return;
+  }
   const gruppe = {
     id: 'fg_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
-    sowName, weanDate: date, initialCount: count, stall: fgStall, noVerschnitt, losses: [], outflows: []
+    sowName, weanDate: date, initialCount: count, stall: fgStall, bucht, noVerschnitt, losses: [], outflows: []
   };
   ferkelGruppen.push(gruppe);
   await persistFerkelGruppe(gruppe);
