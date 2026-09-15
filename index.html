@@ -2430,9 +2430,9 @@ function computeVerkaufsstatistik(year){
   const hasPriceInfo = s => s.priceOnly || s.basispreis!=null || s.mfa!=null || s.gewicht!=null || s.gesamtpreis!=null || s.amaCount!=null;
   const sales = [];
   mastGruppen.forEach(g=>{
-    (g.sales||[]).forEach(s=>{
+    (g.sales||[]).forEach((s,idx)=>{
       if(s.date >= yearStart && s.date < nextYearStart && hasPriceInfo(s)){
-        sales.push({ ...s, sowName: g.sowName, ventil: g.ventil, bucht: g.bucht });
+        sales.push({ ...s, sowName: g.sowName, ventil: g.ventil, bucht: g.bucht, _groupId: g.id, _idx: idx });
       }
     });
   });
@@ -2543,6 +2543,53 @@ function initVerkaufYear(){
   if(!el.value) el.value = new Date(today()).getFullYear();
 }
 
+function openVerkaufEditModal(g, idx){
+  const s = g.sales[idx];
+  modalBox.innerHTML = `
+    <h3>Verkaufseintrag bearbeiten</h3>
+    <div class="stat-note" style="margin-bottom:10px;">Herkunft: ${g.sowName}${g.ventil ? ` (V${g.ventil}/${g.bucht})` : ''}</div>
+    <div class="field-row">
+      <div class="field"><label>Datum</label><input type="date" id="ve-date" value="${s.date||''}"></div>
+      <div class="field"><label>Stück</label><input type="number" min="1" id="ve-count" value="${s.count??''}"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Basispreis (€/kg)</label><input type="number" step="0.01" id="ve-basispreis" value="${s.basispreis??''}"></div>
+      <div class="field"><label>Mfa %</label><input type="number" step="0.01" id="ve-mfa" value="${s.mfa??''}"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Ø Gewicht (kg)</label><input type="number" step="0.1" id="ve-gewicht" value="${s.gewicht??''}"></div>
+      <div class="field"><label>Ama-Gütesiegel Stück</label><input type="number" min="0" id="ve-ama" value="${s.amaCount??''}"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Gesamtpreis (€)</label><input type="number" step="0.01" id="ve-gesamtpreis" value="${s.gesamtpreis??''}"></div>
+      <div class="field"><label>Euro / KG</label><input type="number" step="0.01" id="ve-eurokg" value="${s.euroKg??''}"></div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-primary" id="ve-save">Speichern</button>
+      <button class="btn-secondary" id="ve-cancel">Abbrechen</button>
+    </div>
+  `;
+  document.getElementById('ve-cancel').onclick = closeModal;
+  document.getElementById('ve-save').onclick = async ()=>{
+    const date = document.getElementById('ve-date').value;
+    const count = Number(document.getElementById('ve-count').value || 0);
+    if(!date || count<=0){ showToast('Bitte Datum und Stück angeben'); return; }
+    const numOrNull = id => { const v = document.getElementById(id).value; return v===''? null : Number(v); };
+    g.sales[idx] = {
+      ...s, date, count,
+      basispreis: numOrNull('ve-basispreis'),
+      mfa: numOrNull('ve-mfa'),
+      gewicht: numOrNull('ve-gewicht'),
+      amaCount: numOrNull('ve-ama'),
+      gesamtpreis: numOrNull('ve-gesamtpreis'),
+      euroKg: numOrNull('ve-eurokg')
+    };
+    await persistMastGruppe(g);
+    closeModal(); renderVerkaufView(); showToast('Eintrag aktualisiert');
+  };
+  overlay.classList.add('open');
+}
+
 function renderVerkaufView(){
   const year = Number(document.getElementById('vk-year').value) || new Date(today()).getFullYear();
   const v = computeVerkaufsstatistik(year);
@@ -2578,6 +2625,10 @@ function renderVerkaufView(){
     <td>${s.pStueck!=null ? f2(s.pStueck)+' €' : '–'}</td>
     <td>${s.euroKg!=null ? f2(s.euroKg)+' €' : '–'}</td>
     <td>${herkunft}</td>
+    <td style="white-space:nowrap;">
+      <button class="btn-secondary" data-act="vk-edit" data-gid="${s._groupId}" data-idx="${s._idx}" style="padding:4px 8px;font-size:0.74rem;">✎</button>
+      <button class="btn-secondary" data-act="vk-delete" data-gid="${s._groupId}" data-idx="${s._idx}" style="padding:4px 8px;font-size:0.74rem;color:var(--alert);">✕</button>
+    </td>
   </tr>`;
   }).join('');
 
@@ -2637,7 +2688,7 @@ function renderVerkaufView(){
 
     <div class="stats-table-wrap"><table class="stats-table">
       <thead><tr>
-        <th>Nr</th><th>Datum</th><th>Woche</th><th>Basispreis</th><th>Mfa%</th><th>Gewicht</th><th>Stück</th><th>Ama St.</th><th>Gesamtpreis</th><th>P/Stück</th><th>Euro KG</th><th>Bucht / Herkunft</th>
+        <th>Nr</th><th>Datum</th><th>Woche</th><th>Basispreis</th><th>Mfa%</th><th>Gewicht</th><th>Stück</th><th>Ama St.</th><th>Gesamtpreis</th><th>P/Stück</th><th>Euro KG</th><th>Bucht / Herkunft</th><th></th>
       </tr></thead>
       <tbody>
         ${rowsHtml}
@@ -2651,6 +2702,7 @@ function renderVerkaufView(){
           <td><b>${f2(v.gesamtpreis)} €</b></td>
           <td><b>${f2(v.durchschnPreis)} €</b></td>
           <td><b>${v.euroKgAvg!=null ? f2(v.euroKgAvg)+' €' : '–'}</b></td>
+          <td></td>
           <td></td>
         </tr>` : ''}
       </tbody>
@@ -2678,6 +2730,26 @@ document.getElementById('vk-year').addEventListener('change', renderVerkaufView)
 document.getElementById('printVerkaufBtn').addEventListener('click', ()=> window.print());
 
 document.getElementById('verkaufResults').addEventListener('click', async (e)=>{
+  const editBtn = e.target.closest('button[data-act="vk-edit"]');
+  const delBtn = e.target.closest('button[data-act="vk-delete"]');
+  if(editBtn){
+    const g = mastGruppen.find(x=>x.id===editBtn.dataset.gid);
+    if(!g){ showToast('Eintrag nicht gefunden'); return; }
+    openVerkaufEditModal(g, Number(editBtn.dataset.idx));
+    return;
+  }
+  if(delBtn){
+    const g = mastGruppen.find(x=>x.id===delBtn.dataset.gid);
+    if(!g){ showToast('Eintrag nicht gefunden'); return; }
+    if(confirm('Diesen Verkaufseintrag wirklich löschen?')){
+      g.sales.splice(Number(delBtn.dataset.idx), 1);
+      await persistMastGruppe(g);
+      renderVerkaufView();
+      showToast('Eintrag gelöscht');
+    }
+    return;
+  }
+
   const btn = e.target.closest('#vkn-save');
   if(!btn) return;
 
