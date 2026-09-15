@@ -465,6 +465,7 @@ async function deleteRecordRemote(tableName, id){
 let ferkelGruppen = [];
 let mastGruppen = [];
 let sauenKorrekturen = [];
+let initialDataLoaded = false;
 
 async function loadFerkelGruppen(){ ferkelGruppen = await loadTable('ferkel_gruppen'); }
 async function loadMastGruppen(){ mastGruppen = await loadTable('mast_gruppen'); }
@@ -477,6 +478,7 @@ async function deleteMastGruppeRemote(id){ await deleteRecordRemote('mast_gruppe
 
 async function loadAll(){
   await Promise.all([ loadSows(), loadFerkelGruppen(), loadMastGruppen(), loadSauenKorrekturen() ]);
+  initialDataLoaded = true;
   refreshCurrentView();
 }
 
@@ -1396,6 +1398,7 @@ document.getElementById('viewTabs').addEventListener('click', (e)=>{
 });
 
 function refreshCurrentView(){
+  if(!initialDataLoaded){ renderLoadingPlaceholder(); return; }
   if(currentView === 'stats') renderStats();
   else if(currentView === 'plan') renderArbeitsplan();
   else if(currentView === 'tierliste') renderTierliste();
@@ -1403,6 +1406,16 @@ function refreshCurrentView(){
   else if(currentView === 'ferkel') renderFerkelView();
   else if(currentView === 'mast') renderMastView();
   else render();
+}
+
+function renderLoadingPlaceholder(){
+  const loadingHtml = `<div class="empty"><div class="big">Lädt Daten…</div>Einen Moment, die Daten werden von der Datenbank geladen.</div>`;
+  const containerId = {
+    sows: 'list', ferkel: 'ferkelView', mast: 'mastView',
+    tierliste: 'tierlisteResults', verkauf: 'verkaufResults',
+    stats: 'statsView', plan: 'apResults'
+  }[currentView];
+  if(containerId) document.getElementById(containerId).innerHTML = loadingHtml;
 }
 
 function collectLitters(sowsData){
