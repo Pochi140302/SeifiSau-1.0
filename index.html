@@ -471,6 +471,7 @@ async function loadMastGruppen(){ mastGruppen = await loadTable('mast_gruppen');
 async function loadSauenKorrekturen(){ sauenKorrekturen = await loadTable('sauen_korrekturen'); }
 async function persistFerkelGruppe(g){ await persistRecord('ferkel_gruppen', g); }
 async function persistMastGruppe(g){ await persistRecord('mast_gruppen', g); }
+async function persistSauenKorrektur(k){ await persistRecord('sauen_korrekturen', k); }
 async function deleteFerkelGruppeRemote(id){ await deleteRecordRemote('ferkel_gruppen', id); }
 async function deleteMastGruppeRemote(id){ await deleteRecordRemote('mast_gruppen', id); }
 
@@ -2459,6 +2460,190 @@ function buildWeeklyLedger(tx, year, flowTypes){
   return { year, anfangsbestand, weeks, totals, sumBestand, jahresdurchschnitt: sumBestand/52 };
 }
 
+/* Historische Zuchtsauen-Daten (Bestandsfuehrung ab 2015 lt. Excel-Formblatt 2001-2025);
+   davor (bis inkl. 2014) wurden Zuchtsauen noch nicht separat als eigene Tierkategorie erfasst. */
+const SAUEN_ERFASSUNG_START_JAHR = 2015;
+const SAUEN_HISTORISCHE_KORREKTUREN = [
+  {id:'sk_hist_init',date:'2014-12-31',type:'zugang',count:37},
+  {id:'sk_hist_2015_2_verkauft',date:'2015-01-08',type:'verkauft',count:3},
+  {id:'sk_hist_2015_4_zugang',date:'2015-01-22',type:'zugang',count:2},
+  {id:'sk_hist_2015_7_verkauft',date:'2015-02-12',type:'verkauft',count:2},
+  {id:'sk_hist_2015_11_zugang',date:'2015-03-12',type:'zugang',count:3},
+  {id:'sk_hist_2015_14_verkauft',date:'2015-04-02',type:'verkauft',count:3},
+  {id:'sk_hist_2015_16_verendet',date:'2015-04-16',type:'verendet',count:1},
+  {id:'sk_hist_2015_17_zugang',date:'2015-04-23',type:'zugang',count:4},
+  {id:'sk_hist_2015_22_verkauft',date:'2015-05-28',type:'verkauft',count:2},
+  {id:'sk_hist_2015_23_zugang',date:'2015-06-04',type:'zugang',count:2},
+  {id:'sk_hist_2015_28_verkauft',date:'2015-07-09',type:'verkauft',count:2},
+  {id:'sk_hist_2015_29_zugang',date:'2015-07-16',type:'zugang',count:2},
+  {id:'sk_hist_2015_34_verkauft',date:'2015-08-20',type:'verkauft',count:2},
+  {id:'sk_hist_2015_42_verkauft',date:'2015-10-15',type:'verkauft',count:3},
+  {id:'sk_hist_2015_44_zugang',date:'2015-10-29',type:'zugang',count:2},
+  {id:'sk_hist_2015_48_verkauft',date:'2015-11-26',type:'verkauft',count:3},
+  {id:'sk_hist_2015_50_zugang',date:'2015-12-10',type:'zugang',count:2},
+  {id:'sk_hist_2016_4_zugang',date:'2016-01-22',type:'zugang',count:3},
+  {id:'sk_hist_2016_20_verkauft',date:'2016-05-13',type:'verkauft',count:1},
+  {id:'sk_hist_2016_22_zugang',date:'2016-05-27',type:'zugang',count:3},
+  {id:'sk_hist_2016_23_verkauft',date:'2016-06-03',type:'verkauft',count:1},
+  {id:'sk_hist_2016_25_verkauft',date:'2016-06-17',type:'verkauft',count:1},
+  {id:'sk_hist_2016_33_verkauft',date:'2016-08-12',type:'verkauft',count:2},
+  {id:'sk_hist_2016_39_zugang',date:'2016-09-23',type:'zugang',count:3},
+  {id:'sk_hist_2016_41_verkauft',date:'2016-10-07',type:'verkauft',count:1},
+  {id:'sk_hist_2016_49_verkauft',date:'2016-12-02',type:'verkauft',count:3},
+  {id:'sk_hist_2016_51_zugang',date:'2016-12-16',type:'zugang',count:3},
+  {id:'sk_hist_2017_3_zugang',date:'2017-01-15',type:'zugang',count:1},
+  {id:'sk_hist_2017_6_verkauft',date:'2017-02-05',type:'verkauft',count:1},
+  {id:'sk_hist_2017_7_zugang',date:'2017-02-12',type:'zugang',count:4},
+  {id:'sk_hist_2017_9_verkauft',date:'2017-02-26',type:'verkauft',count:1},
+  {id:'sk_hist_2017_11_verkauft',date:'2017-03-12',type:'verkauft',count:1},
+  {id:'sk_hist_2017_13_zugang',date:'2017-03-26',type:'zugang',count:3},
+  {id:'sk_hist_2017_17_verkauft',date:'2017-04-23',type:'verkauft',count:2},
+  {id:'sk_hist_2017_20_zugang',date:'2017-05-14',type:'zugang',count:2},
+  {id:'sk_hist_2017_25_verkauft',date:'2017-06-18',type:'verkauft',count:1},
+  {id:'sk_hist_2017_34_verkauft',date:'2017-08-20',type:'verkauft',count:2},
+  {id:'sk_hist_2017_36_zugang',date:'2017-09-03',type:'zugang',count:3},
+  {id:'sk_hist_2017_37_verkauft',date:'2017-09-10',type:'verkauft',count:2},
+  {id:'sk_hist_2017_42_verkauft',date:'2017-10-15',type:'verkauft',count:2},
+  {id:'sk_hist_2017_45_zugang',date:'2017-11-05',type:'zugang',count:2},
+  {id:'sk_hist_2017_45_verkauft',date:'2017-11-05',type:'verkauft',count:1},
+  {id:'sk_hist_2017_47_verkauft',date:'2017-11-19',type:'verkauft',count:1},
+  {id:'sk_hist_2017_49_verkauft',date:'2017-12-03',type:'verkauft',count:3},
+  {id:'sk_hist_2018_3_zugang',date:'2018-01-15',type:'zugang',count:3},
+  {id:'sk_hist_2018_4_verkauft',date:'2018-01-22',type:'verkauft',count:2},
+  {id:'sk_hist_2018_7_verkauft',date:'2018-02-12',type:'verkauft',count:1},
+  {id:'sk_hist_2018_8_zugang',date:'2018-02-19',type:'zugang',count:5},
+  {id:'sk_hist_2018_17_verkauft',date:'2018-04-23',type:'verkauft',count:1},
+  {id:'sk_hist_2018_26_verkauft',date:'2018-06-25',type:'verkauft',count:2},
+  {id:'sk_hist_2018_32_zugang',date:'2018-08-06',type:'zugang',count:4},
+  {id:'sk_hist_2018_32_verkauft',date:'2018-08-06',type:'verkauft',count:2},
+  {id:'sk_hist_2018_38_verkauft',date:'2018-09-17',type:'verkauft',count:3},
+  {id:'sk_hist_2018_39_zugang',date:'2018-09-24',type:'zugang',count:4},
+  {id:'sk_hist_2018_42_verkauft',date:'2018-10-15',type:'verkauft',count:1},
+  {id:'sk_hist_2018_44_verendet',date:'2018-10-29',type:'verendet',count:1},
+  {id:'sk_hist_2018_47_zugang',date:'2018-11-19',type:'zugang',count:4},
+  {id:'sk_hist_2018_47_verkauft',date:'2018-11-19',type:'verkauft',count:1},
+  {id:'sk_hist_2018_48_verkauft',date:'2018-11-26',type:'verkauft',count:2},
+  {id:'sk_hist_2019_2_zugang',date:'2019-01-08',type:'zugang',count:3},
+  {id:'sk_hist_2019_4_verkauft',date:'2019-01-22',type:'verkauft',count:1},
+  {id:'sk_hist_2019_8_verendet',date:'2019-02-19',type:'verendet',count:1},
+  {id:'sk_hist_2019_9_zugang',date:'2019-02-26',type:'zugang',count:4},
+  {id:'sk_hist_2019_10_verkauft',date:'2019-03-05',type:'verkauft',count:3},
+  {id:'sk_hist_2019_11_verkauft',date:'2019-03-12',type:'verkauft',count:2},
+  {id:'sk_hist_2019_14_verkauft',date:'2019-04-02',type:'verkauft',count:2},
+  {id:'sk_hist_2019_16_zugang',date:'2019-04-16',type:'zugang',count:4},
+  {id:'sk_hist_2019_18_verkauft',date:'2019-04-30',type:'verkauft',count:1},
+  {id:'sk_hist_2019_27_zugang',date:'2019-07-02',type:'zugang',count:4},
+  {id:'sk_hist_2019_28_verkauft',date:'2019-07-09',type:'verkauft',count:2},
+  {id:'sk_hist_2019_30_zugang',date:'2019-07-23',type:'zugang',count:3},
+  {id:'sk_hist_2019_33_verkauft',date:'2019-08-13',type:'verkauft',count:3},
+  {id:'sk_hist_2019_39_zugang',date:'2019-09-24',type:'zugang',count:4},
+  {id:'sk_hist_2019_41_verkauft',date:'2019-10-08',type:'verkauft',count:1},
+  {id:'sk_hist_2019_44_verkauft',date:'2019-10-29',type:'verkauft',count:1},
+  {id:'sk_hist_2019_46_zugang',date:'2019-11-12',type:'zugang',count:4},
+  {id:'sk_hist_2019_47_verkauft',date:'2019-11-19',type:'verkauft',count:2},
+  {id:'sk_hist_2019_48_verendet',date:'2019-11-26',type:'verendet',count:1},
+  {id:'sk_hist_2020_5_verkauft',date:'2020-01-29',type:'verkauft',count:2},
+  {id:'sk_hist_2020_9_verkauft',date:'2020-02-26',type:'verkauft',count:4},
+  {id:'sk_hist_2020_11_zugang',date:'2020-03-11',type:'zugang',count:4},
+  {id:'sk_hist_2020_14_zugang',date:'2020-04-01',type:'zugang',count:2},
+  {id:'sk_hist_2020_26_verkauft',date:'2020-06-24',type:'verkauft',count:1},
+  {id:'sk_hist_2020_29_zugang',date:'2020-07-15',type:'zugang',count:4},
+  {id:'sk_hist_2020_30_verkauft',date:'2020-07-22',type:'verkauft',count:3},
+  {id:'sk_hist_2020_33_verkauft',date:'2020-08-12',type:'verkauft',count:4},
+  {id:'sk_hist_2020_36_verkauft',date:'2020-09-02',type:'verkauft',count:5},
+  {id:'sk_hist_2020_37_zugang',date:'2020-09-09',type:'zugang',count:4},
+  {id:'sk_hist_2020_42_zugang',date:'2020-10-14',type:'zugang',count:6},
+  {id:'sk_hist_2020_47_verkauft',date:'2020-11-18',type:'verkauft',count:1},
+  {id:'sk_hist_2020_51_verkauft',date:'2020-12-16',type:'verkauft',count:1},
+  {id:'sk_hist_2021_10_verkauft',date:'2021-03-05',type:'verkauft',count:1},
+  {id:'sk_hist_2021_13_verkauft',date:'2021-03-26',type:'verkauft',count:2},
+  {id:'sk_hist_2021_16_zugang',date:'2021-04-16',type:'zugang',count:4},
+  {id:'sk_hist_2021_20_verkauft',date:'2021-05-14',type:'verkauft',count:2},
+  {id:'sk_hist_2021_23_verkauft',date:'2021-06-04',type:'verkauft',count:1},
+  {id:'sk_hist_2021_26_verkauft',date:'2021-06-25',type:'verkauft',count:2},
+  {id:'sk_hist_2021_31_zugang',date:'2021-07-30',type:'zugang',count:4},
+  {id:'sk_hist_2021_36_verkauft',date:'2021-09-03',type:'verkauft',count:1},
+  {id:'sk_hist_2021_38_zugang',date:'2021-09-17',type:'zugang',count:4},
+  {id:'sk_hist_2021_39_verkauft',date:'2021-09-24',type:'verkauft',count:2},
+  {id:'sk_hist_2021_41_verkauft',date:'2021-10-08',type:'verkauft',count:1},
+  {id:'sk_hist_2021_42_verkauft',date:'2021-10-15',type:'verkauft',count:1},
+  {id:'sk_hist_2021_46_verkauft',date:'2021-11-12',type:'verkauft',count:1},
+  {id:'sk_hist_2021_50_verkauft',date:'2021-12-10',type:'verkauft',count:1},
+  {id:'sk_hist_2022_2_zugang',date:'2022-01-08',type:'zugang',count:4},
+  {id:'sk_hist_2022_5_verkauft',date:'2022-01-29',type:'verkauft',count:3},
+  {id:'sk_hist_2022_18_verkauft',date:'2022-04-30',type:'verkauft',count:3},
+  {id:'sk_hist_2022_19_zugang',date:'2022-05-07',type:'zugang',count:4},
+  {id:'sk_hist_2022_23_verkauft',date:'2022-06-04',type:'verkauft',count:4},
+  {id:'sk_hist_2022_25_zugang',date:'2022-06-18',type:'zugang',count:3},
+  {id:'sk_hist_2022_28_verkauft',date:'2022-07-09',type:'verkauft',count:2},
+  {id:'sk_hist_2022_32_verkauft',date:'2022-08-06',type:'verkauft',count:2},
+  {id:'sk_hist_2022_33_zugang',date:'2022-08-13',type:'zugang',count:4},
+  {id:'sk_hist_2022_34_verkauft',date:'2022-08-20',type:'verkauft',count:1},
+  {id:'sk_hist_2022_34_verendet',date:'2022-08-20',type:'verendet',count:1},
+  {id:'sk_hist_2022_39_zugang',date:'2022-09-24',type:'zugang',count:4},
+  {id:'sk_hist_2022_41_verkauft',date:'2022-10-08',type:'verkauft',count:1},
+  {id:'sk_hist_2022_45_verkauft',date:'2022-11-05',type:'verkauft',count:1},
+  {id:'sk_hist_2022_50_verkauft',date:'2022-12-10',type:'verkauft',count:1},
+  {id:'sk_hist_2023_8_zugang',date:'2023-02-19',type:'zugang',count:4},
+  {id:'sk_hist_2023_13_verkauft',date:'2023-03-26',type:'verkauft',count:2},
+  {id:'sk_hist_2023_18_verkauft',date:'2023-04-30',type:'verkauft',count:2},
+  {id:'sk_hist_2023_19_zugang',date:'2023-05-07',type:'zugang',count:2},
+  {id:'sk_hist_2023_28_verkauft',date:'2023-07-09',type:'verkauft',count:2},
+  {id:'sk_hist_2023_30_zugang',date:'2023-07-23',type:'zugang',count:4},
+  {id:'sk_hist_2023_32_verkauft',date:'2023-08-06',type:'verkauft',count:2},
+  {id:'sk_hist_2023_34_verendet',date:'2023-08-20',type:'verendet',count:1},
+  {id:'sk_hist_2023_36_verkauft',date:'2023-09-03',type:'verkauft',count:2},
+  {id:'sk_hist_2023_37_zugang',date:'2023-09-10',type:'zugang',count:4},
+  {id:'sk_hist_2023_39_verkauft',date:'2023-09-24',type:'verkauft',count:2},
+  {id:'sk_hist_2023_44_verkauft',date:'2023-10-29',type:'verkauft',count:3},
+  {id:'sk_hist_2023_45_zugang',date:'2023-11-05',type:'zugang',count:5},
+  {id:'sk_hist_2023_52_verkauft',date:'2023-12-24',type:'verkauft',count:2},
+  {id:'sk_hist_2024_3_verkauft',date:'2024-01-15',type:'verkauft',count:1},
+  {id:'sk_hist_2024_6_zugang',date:'2024-02-05',type:'zugang',count:5},
+  {id:'sk_hist_2024_6_verkauft',date:'2024-02-05',type:'verkauft',count:2},
+  {id:'sk_hist_2024_14_verkauft',date:'2024-04-01',type:'verkauft',count:2},
+  {id:'sk_hist_2024_16_verkauft',date:'2024-04-15',type:'verkauft',count:2},
+  {id:'sk_hist_2024_17_verendet',date:'2024-04-22',type:'verendet',count:1},
+  {id:'sk_hist_2024_18_zugang',date:'2024-04-29',type:'zugang',count:5},
+  {id:'sk_hist_2024_27_zugang',date:'2024-07-01',type:'zugang',count:3},
+  {id:'sk_hist_2024_28_verkauft',date:'2024-07-08',type:'verkauft',count:2},
+  {id:'sk_hist_2024_32_verkauft',date:'2024-08-05',type:'verkauft',count:2},
+  {id:'sk_hist_2024_34_verendet',date:'2024-08-19',type:'verendet',count:1},
+  {id:'sk_hist_2024_37_zugang',date:'2024-09-09',type:'zugang',count:3},
+  {id:'sk_hist_2024_37_verkauft',date:'2024-09-09',type:'verkauft',count:2},
+  {id:'sk_hist_2024_40_verkauft',date:'2024-09-30',type:'verkauft',count:2},
+  {id:'sk_hist_2024_46_verkauft',date:'2024-11-11',type:'verkauft',count:2},
+  {id:'sk_hist_2024_50_zugang',date:'2024-12-09',type:'zugang',count:6},
+  {id:'sk_hist_2025_3_zugang',date:'2025-01-15',type:'zugang',count:3},
+  {id:'sk_hist_2025_5_verkauft',date:'2025-01-29',type:'verkauft',count:1},
+  {id:'sk_hist_2025_11_verkauft',date:'2025-03-12',type:'verkauft',count:1},
+  {id:'sk_hist_2025_14_verkauft',date:'2025-04-02',type:'verkauft',count:1},
+  {id:'sk_hist_2025_16_zugang',date:'2025-04-16',type:'zugang',count:4},
+  {id:'sk_hist_2025_17_verkauft',date:'2025-04-23',type:'verkauft',count:3},
+  {id:'sk_hist_2025_24_verkauft',date:'2025-06-11',type:'verkauft',count:1},
+  {id:'sk_hist_2025_38_verkauft',date:'2025-09-17',type:'verkauft',count:2},
+  {id:'sk_hist_2025_47_verkauft',date:'2025-11-19',type:'verkauft',count:1},
+  {id:'sk_hist_2025_49_zugang',date:'2025-12-03',type:'zugang',count:5},
+  {id:'sk_hist_2025_51_verkauft',date:'2025-12-17',type:'verkauft',count:3},
+  {id:'sk_hist_boundary_2020',date:'2019-12-31',type:'korrektur',count:4},
+  {id:'sk_hist_boundary_2021',date:'2020-12-31',type:'zugang',count:5},
+  {id:'sk_hist_boundary_2024',date:'2023-12-31',type:'korrektur',count:1},
+  {id:'sk_hist_boundary_2025',date:'2024-12-31',type:'korrektur',count:3}
+];
+
+function sauenHistImportiert(){
+  return sauenKorrekturen.some(k=>k.id==='sk_hist_init');
+}
+async function importHistorischeSauenkorrekturen(){
+  for(const rec of SAUEN_HISTORISCHE_KORREKTUREN){
+    if(sauenKorrekturen.some(k=>k.id===rec.id)) continue;
+    sauenKorrekturen.push(rec);
+    await persistSauenKorrektur(rec);
+  }
+  renderTierliste();
+  showToast('Historische Zuchtsauen-Daten (2015–2025) importiert');
+}
+
 function collectSauenTransactions(){
   const tx = [];
   sows.forEach(s=>{
@@ -2472,7 +2657,7 @@ function collectSauenTransactions(){
 }
 function computeSauenTierliste(year){
   return buildWeeklyLedger(collectSauenTransactions(), year, [
-    { key:'verkauft', txType:'verkauft' }, { key:'verendet', txType:'verendet' }
+    { key:'verkauft', txType:'verkauft' }, { key:'verendet', txType:'verendet' }, { key:'korrektur', txType:'korrektur' }
   ]);
 }
 
@@ -2624,19 +2809,35 @@ function renderLedgerSection(title, ledger, columnDefs){
 
 function renderTierliste(){
   const year = Number(document.getElementById('tl-year').value) || new Date(today()).getFullYear();
-  const sauenLedger = computeSauenTierliste(year);
   const ferkelLedger = computeFerkelTierliste(year);
   const d = computeTierliste(year);
   const v = computeVerkaufsstatistik(year);
   const el = document.getElementById('tierlisteResults');
   const f2 = n => n==null ? '–' : n.toFixed(2);
 
+  let sauenSectionHtml;
+  if(year < SAUEN_ERFASSUNG_START_JAHR){
+    sauenSectionHtml = `
+      <div class="stat-section">
+        <h3>Formblatt ${year} – Zuchtschweine (Sauen)</h3>
+        <div class="stat-note">Zuchtsauen wurden erst ab ${SAUEN_ERFASSUNG_START_JAHR} separat als eigene Tierkategorie erfasst – für ${year} liegt daher kein eigenes Formblatt vor.</div>
+      </div>
+    `;
+  } else {
+    const sauenLedger = computeSauenTierliste(year);
+    sauenSectionHtml = (!sauenHistImportiert() ? `
+      <div class="stat-section">
+        <button class="btn-secondary" id="importSauenHistBtn">Historische Zuchtsauen-Daten (2015–2025) importieren</button>
+      </div>
+    ` : '') + renderLedgerSection(`Formblatt ${year} – Zuchtschweine (Sauen)`, sauenLedger, [
+      { key:'verkauft', label:'Verkauf' }, { key:'verendet', label:'Verendung' }, { key:'korrektur', label:'Korrektur (Jahresübergang)' }
+    ]) + (sauenLedger.totals.korrektur ? `<div class="stat-note" style="margin-top:-14px; margin-bottom:20px;">„Korrektur (Jahresübergang)" gleicht eine Differenz zwischen dem rechnerisch fortgeschriebenen und dem im Ursprungs-Formblatt händisch erfassten Anfangsbestand des Folgejahres aus (Stichtags-Nachzählung).</div>` : '');
+  }
+
   el.innerHTML = `
     <div class="print-only">Tierliste ${year} – Jahresdurchschnittsbestand Zuchtschweine, Ferkel und Mastschweine</div>
 
-    ${renderLedgerSection(`Formblatt ${year} – Zuchtschweine (Sauen)`, sauenLedger, [
-      { key:'verkauft', label:'Verkauf' }, { key:'verendet', label:'Verendung' }
-    ])}
+    ${sauenSectionHtml}
 
     ${renderLedgerSection(`Formblatt ${year} – Ferkel`, ferkelLedger, [
       { key:'verkauft', label:'Verkauf' }, { key:'verendet', label:'Verendung' }, { key:'mast', label:'Umstallung Mast' }
@@ -2672,6 +2873,9 @@ function renderTierliste(){
       <div class="stat-note">Verendung entspricht den bei den Mastschweinen eingetragenen Verlusten. Die detaillierte Verkaufsstatistik (Preise, Mfa%, Gewicht) findest du im Reiter „Verkauf".</div>
     </div>
   `;
+
+  const importBtn = document.getElementById('importSauenHistBtn');
+  if(importBtn) importBtn.addEventListener('click', importHistorischeSauenkorrekturen);
 }
 
 document.getElementById('tl-year').addEventListener('change', renderTierliste);
