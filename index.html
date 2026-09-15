@@ -2549,7 +2549,23 @@ function renderVerkaufView(){
   const el = document.getElementById('verkaufResults');
   const f2 = n => n==null ? '–' : n.toFixed(2);
 
-  const rowsHtml = v.sales.map((s,i)=>`<tr>
+  const rowsHtml = v.sales.map((s,i)=>{
+    let herkunft;
+    if(s.breakdown && s.breakdown.length){
+      herkunft = s.breakdown.map(b=>{
+        const og = mastGruppen.find(g=>g.ventil===b.ventil && g.bucht===b.bucht);
+        const rem = og ? mastGruppeStats(og).remaining : null;
+        return `V${b.ventil}/${b.bucht}: ${b.count}${rem!=null ? ' (Best.: '+rem+')' : ''}`;
+      }).join(', ');
+    } else {
+      herkunft = s.sowName;
+      if(s.ventil){
+        const originGroup = mastGruppen.find(g=>g.ventil===s.ventil && g.bucht===s.bucht);
+        const originRemaining = originGroup ? mastGruppeStats(originGroup).remaining : null;
+        herkunft += ` (V${s.ventil}/${s.bucht}${originRemaining!=null ? ', Bestand: '+originRemaining : ''})`;
+      }
+    }
+    return `<tr>
     <td>${i+1}</td>
     <td>${fmt(s.date)}</td>
     <td>${s.woche}</td>
@@ -2561,31 +2577,20 @@ function renderVerkaufView(){
     <td>${s.gesamtpreis!=null ? f2(s.gesamtpreis)+' €' : '–'}</td>
     <td>${s.pStueck!=null ? f2(s.pStueck)+' €' : '–'}</td>
     <td>${s.euroKg!=null ? f2(s.euroKg)+' €' : '–'}</td>
-    <td>${s.sowName}${s.ventil ? ` (V${s.ventil}/${s.bucht})` : ''}</td>
-  </tr>`).join('');
+    <td>${herkunft}</td>
+  </tr>`;
+  }).join('');
 
   const activePens = pensStatus().filter(p=>p.occupant);
-  const penOptionsHtml = activePens.length
-    ? activePens.map(p=>`<option value="${p.ventil}-${p.bucht}">V${p.ventil}/${p.bucht} – ${p.sowNames} (${p.remaining})</option>`).join('')
-    : '<option value="">Keine belegten Buchten</option>';
+  const penOptionsHtml = '<option value="none">Kein Bezug</option>' +
+    activePens.map(p=>`<option value="${p.ventil}-${p.bucht}">V${p.ventil}/${p.bucht} – ${p.sowNames} (${p.remaining})</option>`).join('');
 
-  const newRowHtml = `<tr class="vk-new-row">
-    <td>–</td>
-    <td><input type="date" id="vkrow-date" class="table-input" value="${today()}"></td>
-    <td>–</td>
-    <td><input type="number" step="0.01" id="vkrow-basispreis" class="table-input" style="width:70px;"></td>
-    <td><input type="number" step="0.01" id="vkrow-mfa" class="table-input" style="width:60px;"></td>
-    <td><input type="number" step="0.1" id="vkrow-gewicht" class="table-input" style="width:60px;"></td>
-    <td><input type="number" min="1" id="vkrow-count" class="table-input" style="width:55px;"></td>
-    <td><input type="number" min="0" id="vkrow-ama" class="table-input" style="width:55px;"></td>
-    <td><input type="number" step="0.01" id="vkrow-gesamtpreis" class="table-input" style="width:80px;"></td>
-    <td>–</td>
-    <td><input type="number" step="0.01" id="vkrow-eurokg" class="table-input" style="width:60px;"></td>
-    <td>
-      <select id="vkrow-pen" class="table-input" style="width:150px;">${penOptionsHtml}</select>
-      <button class="btn-primary" data-act="vk-save-row" style="padding:6px 10px;font-size:0.78rem;margin-left:6px;">Speichern</button>
-    </td>
-  </tr>`;
+  const allocRowsHtml = [0,1,2,3].map(i=>`
+    <div class="field-row vkn-alloc-row" data-idx="${i}" style="${i>0?'display:none;':''}">
+      <div class="field"><label>Bucht ${i+1}</label><select class="vkn-alloc-pen">${penOptionsHtml}</select></div>
+      <div class="field"><label>Stück aus dieser Bucht</label><input type="number" min="0" class="vkn-alloc-count" style="max-width:110px;"></div>
+    </div>
+  `).join('');
 
   el.innerHTML = `
     <div class="print-only">Verkaufsliste Mastschweine ${year}</div>
@@ -2602,12 +2607,39 @@ function renderVerkaufView(){
         <div class="stat-card"><div class="stat-value">${f2(v.gesamtpreis)}</div><div class="stat-label">Gesamterlös (€)</div></div>
       </div>
     </div>
+
+    <div class="panel open" style="margin-bottom:16px;">
+      <h2>Neuen Verkauf eintragen</h2>
+      <div class="stat-note" style="margin-bottom:10px;">Eine Lieferung kann Tiere aus mehreren Buchten enthalten (die schwersten je Bucht) – Abrechnungsdaten gelten für die gesamte Lieferung.</div>
+      <div class="field-row">
+        <div class="field"><label>Datum</label><input type="date" id="vkn-date" value="${today()}"></div>
+        <div class="field"><label>Basispreis (€/kg)</label><input type="number" step="0.01" id="vkn-basispreis"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Mfa %</label><input type="number" step="0.01" id="vkn-mfa"></div>
+        <div class="field"><label>Ø Gewicht (kg)</label><input type="number" step="0.1" id="vkn-gewicht"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Ama-Gütesiegel Stück</label><input type="number" min="0" id="vkn-ama"></div>
+        <div class="field"><label>Gesamtpreis (€)</label><input type="number" step="0.01" id="vkn-gesamtpreis"></div>
+      </div>
+      <div class="field"><label>Euro / KG (optional)</label><input type="number" step="0.01" id="vkn-eurokg"></div>
+
+      <div class="biorow" style="margin:14px 0 8px;">Herkunft / Buchten-Aufteilung</div>
+      <div id="vkn-alloc-rows">${allocRowsHtml}</div>
+      <button class="btn-secondary" id="vkn-add-alloc" type="button" style="margin-bottom:10px;">+ weitere Bucht</button>
+      <div class="stat-note" id="vkn-total-hint">Gesamt Stück: 0</div>
+
+      <div class="panelbtns">
+        <button class="btn-primary" id="vkn-save">Verkauf speichern</button>
+      </div>
+    </div>
+
     <div class="stats-table-wrap"><table class="stats-table">
       <thead><tr>
         <th>Nr</th><th>Datum</th><th>Woche</th><th>Basispreis</th><th>Mfa%</th><th>Gewicht</th><th>Stück</th><th>Ama St.</th><th>Gesamtpreis</th><th>P/Stück</th><th>Euro KG</th><th>Bucht / Herkunft</th>
       </tr></thead>
       <tbody>
-        ${newRowHtml}
         ${rowsHtml}
         ${v.sales.length ? `<tr>
           <td colspan="3"><b>Summe / Ø</b></td>
@@ -2623,38 +2655,94 @@ function renderVerkaufView(){
         </tr>` : ''}
       </tbody>
     </table></div>
-    <div class="stat-note" style="margin-top:8px;">Neue Zeile ganz oben ausfüllen (mind. Bucht, Datum, Stück) und „Speichern" klicken – wie beim Eintippen in Excel. Ø-Werte je Lieferung berechnet (nicht nach Stückzahl gewichtet).</div>
+    <div class="stat-note" style="margin-top:8px;">Ø-Werte je Lieferung berechnet (nicht nach Stückzahl gewichtet).</div>
   `;
+
+  const updateTotal = () => {
+    let total = 0;
+    document.querySelectorAll('.vkn-alloc-row').forEach(row=>{
+      if(row.style.display === 'none') return;
+      const c = Number(row.querySelector('.vkn-alloc-count').value || 0);
+      total += c;
+    });
+    document.getElementById('vkn-total-hint').textContent = `Gesamt Stück: ${total}`;
+  };
+  document.querySelectorAll('.vkn-alloc-count').forEach(inp=> inp.addEventListener('input', updateTotal));
+  document.getElementById('vkn-add-alloc').addEventListener('click', ()=>{
+    const hidden = Array.from(document.querySelectorAll('.vkn-alloc-row')).find(r=>r.style.display==='none');
+    if(hidden) hidden.style.display = 'flex';
+  });
 }
 
 document.getElementById('vk-year').addEventListener('change', renderVerkaufView);
 document.getElementById('printVerkaufBtn').addEventListener('click', ()=> window.print());
 
 document.getElementById('verkaufResults').addEventListener('click', async (e)=>{
-  const btn = e.target.closest('button[data-act="vk-save-row"]');
+  const btn = e.target.closest('#vkn-save');
   if(!btn) return;
-  const date = document.getElementById('vkrow-date').value;
-  const count = Number(document.getElementById('vkrow-count').value || 0);
-  const penVal = document.getElementById('vkrow-pen').value;
-  if(!date || count<=0 || !penVal){ showToast('Bitte mindestens Bucht, Datum und Stück angeben'); return; }
-  const [vRaw, bRaw] = penVal.split('-');
-  const ventil = Number(vRaw), bucht = bRaw;
-  const g = mastGruppen.find(x=>x.ventil===ventil && x.bucht===bucht && mastGruppeStats(x).remaining > 0);
-  if(!g){ showToast('Bucht nicht gefunden'); return; }
-  const st = mastGruppeStats(g);
-  if(count > st.remaining){ showToast('Anzahl größer als aktueller Bestand ('+st.remaining+')'); return; }
-  const numOrNull = id => { const v = document.getElementById(id).value; return v===''? null : Number(v); };
-  g.sales = g.sales || [];
-  g.sales.push({
-    date, count,
-    basispreis: numOrNull('vkrow-basispreis'),
-    mfa: numOrNull('vkrow-mfa'),
-    gewicht: numOrNull('vkrow-gewicht'),
-    amaCount: numOrNull('vkrow-ama'),
-    gesamtpreis: numOrNull('vkrow-gesamtpreis'),
-    euroKg: numOrNull('vkrow-eurokg')
+
+  const date = document.getElementById('vkn-date').value;
+  if(!date){ showToast('Bitte Datum angeben'); return; }
+
+  const allocations = [];
+  document.querySelectorAll('.vkn-alloc-row').forEach(row=>{
+    if(row.style.display === 'none') return;
+    const penVal = row.querySelector('.vkn-alloc-pen').value;
+    const count = Number(row.querySelector('.vkn-alloc-count').value || 0);
+    if(count > 0) allocations.push({ penVal, count });
   });
-  await persistMastGruppe(g);
+  const totalCount = allocations.reduce((a,al)=>a+al.count, 0);
+  if(totalCount <= 0){ showToast('Bitte mindestens eine Bucht mit Stückzahl angeben'); return; }
+
+  // Bestand je Bucht pruefen und Stueck dort abziehen (bestandswirksam, zaehlt in der Tierliste)
+  const breakdown = [];
+  const touchedGroups = [];
+  for(const al of allocations){
+    let g;
+    if(!al.penVal || al.penVal==='none'){
+      g = mastGruppen.find(x=>x.id==='mg_sammel');
+      if(!g){
+        g = { id:'mg_sammel', sowName:'Sammel-Verkauf', originFerkelId:null, zugaenge:[], ventil:null, bucht:null, losses:[], sales:[] };
+        mastGruppen.push(g);
+      }
+      g.sales = g.sales || [];
+      g.sales.push({ date, count: al.count });
+    } else {
+      const [vRaw, bRaw] = al.penVal.split('-');
+      const ventil = Number(vRaw), bucht = bRaw;
+      g = mastGruppen.find(x=>x.ventil===ventil && x.bucht===bucht);
+      if(!g){ showToast('Bucht nicht gefunden'); return; }
+      const st = mastGruppeStats(g);
+      if(al.count > st.remaining){ showToast(`Ventil ${ventil}/${bucht}: Anzahl größer als Bestand (${st.remaining})`); return; }
+      g.sales = g.sales || [];
+      g.sales.push({ date, count: al.count });
+      breakdown.push({ ventil, bucht, count: al.count });
+    }
+    touchedGroups.push(g);
+  }
+
+  // EINE gemeinsame Abrechnung (Preis/Qualitaet) fuer die gesamte Lieferung - zaehlt nur in der Statistik, nicht doppelt im Bestand
+  const numOrNull = id => { const v = document.getElementById(id).value; return v===''? null : Number(v); };
+  let sammel = mastGruppen.find(x=>x.id==='mg_sammel');
+  if(!sammel){
+    sammel = { id:'mg_sammel', sowName:'Sammel-Verkauf', originFerkelId:null, zugaenge:[], ventil:null, bucht:null, losses:[], sales:[] };
+    mastGruppen.push(sammel);
+  }
+  sammel.sales = sammel.sales || [];
+  sammel.sales.push({
+    date, count: totalCount,
+    basispreis: numOrNull('vkn-basispreis'),
+    mfa: numOrNull('vkn-mfa'),
+    gewicht: numOrNull('vkn-gewicht'),
+    amaCount: numOrNull('vkn-ama'),
+    gesamtpreis: numOrNull('vkn-gesamtpreis'),
+    euroKg: numOrNull('vkn-eurokg'),
+    priceOnly: true,
+    breakdown
+  });
+  if(!touchedGroups.includes(sammel)) touchedGroups.push(sammel);
+
+  for(const g of touchedGroups) await persistMastGruppe(g);
   renderVerkaufView();
   showToast('Verkauf eingetragen');
 });
