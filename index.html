@@ -519,7 +519,7 @@ document.getElementById('saveNew').addEventListener('click', async ()=>{
     matings: [], pregCheckDate:null, pregCheckResult:null,
     farrowDate:null, pigletsLive:null, pigletsStillborn:null,
     treatments: blankTreatments(), weanDate:null, pigletsWeaned:null,
-    failedMatings: 0,
+    failedMatings: 0, pg600Date: null,
     history: []
   };
   if(purchaseStatusVal==='traechtig'){
@@ -571,6 +571,13 @@ function computeCard(sow){
       } else {
         rows.push(`Zyklushistorie ohne Absetzdatum`);
       }
+    }
+    if(sow.pg600Date){
+      const pgStart = addDays(sow.pg600Date, 1);
+      const pgEnd = addDays(sow.pg600Date, 2);
+      rows.push(`PG 600 verabreicht am: <b>${fmt(sow.pg600Date)}</b>`);
+      rows.push(`Rausche erwartet innerhalb von 42h: <b>${fmt(pgStart)} – ${fmt(pgEnd)}</b>`);
+      expHeat = pgStart;
     }
     if(expHeat){
       const d = daysBetween(today(), expHeat);
@@ -729,7 +736,12 @@ function render(){
     card.className = 'card ' + cls;
 
     let actions = '';
-    if(info.phase==='wartet_rausche') actions += `<button data-act="mating" data-id="${sow.id}">Deckung eintragen</button>`;
+    if(info.phase==='wartet_rausche'){
+      actions += `<button data-act="mating" data-id="${sow.id}">Deckung eintragen</button>`;
+      actions += sow.pg600Date
+        ? `<button data-act="pg600" data-id="${sow.id}" class="ghost">PG 600 bearbeiten</button>`
+        : `<button data-act="pg600" data-id="${sow.id}" class="ghost">PG 600 eintragen</button>`;
+    }
     if(info.phase==='im_deckzentrum'){
       actions += `<button data-act="mating" data-id="${sow.id}" class="ghost">weitere Deckung</button>`;
       actions += `<button data-act="pregcheck" data-id="${sow.id}">Trächtigkeitsprüfung eintragen</button>`;
@@ -832,6 +844,32 @@ const modalBox = document.getElementById('modalBox');
 function closeModal(){ overlay.classList.remove('open'); modalBox.innerHTML=''; }
 overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeModal(); });
 
+function openPG600Modal(sow){
+  modalBox.innerHTML = `
+    <h3>${sow.pg600Date ? 'PG 600 bearbeiten' : 'PG 600 eintragen'}</h3>
+    <div class="field"><label>Datum der Impfung</label><input type="date" id="pg-date" value="${sow.pg600Date || today()}"></div>
+    <div class="stat-note">PG 600 bringt die Sau in der Regel innerhalb von 42 Stunden in die Rausche.</div>
+    <div class="modal-btns">
+      <button class="btn-primary" id="pg-save">Speichern</button>
+      ${sow.pg600Date ? `<button class="btn-secondary" id="pg-remove">Eintrag entfernen</button>` : ''}
+      <button class="btn-secondary" id="pg-cancel">Abbrechen</button>
+    </div>
+  `;
+  document.getElementById('pg-cancel').onclick = closeModal;
+  document.getElementById('pg-save').onclick = async ()=>{
+    const date = document.getElementById('pg-date').value;
+    if(!date){ showToast('Bitte Datum angeben'); return; }
+    sow.pg600Date = date;
+    await persistSow(sow); closeModal(); render(); showToast('PG 600 eingetragen');
+  };
+  const removeBtn = document.getElementById('pg-remove');
+  if(removeBtn) removeBtn.onclick = async ()=>{
+    sow.pg600Date = null;
+    await persistSow(sow); closeModal(); render(); showToast('PG-600-Eintrag entfernt');
+  };
+  overlay.classList.add('open');
+}
+
 function openMatingModal(sow){
   modalBox.innerHTML = `
     <h3>Deckung eintragen</h3>
@@ -872,6 +910,7 @@ function openMatingModal(sow){
       mating.eberNummer = document.getElementById('m-ebernummer').value.trim();
     }
     sow.matings.push(mating);
+    sow.pg600Date = null;
     await persistSow(sow); closeModal(); render(); showToast('Deckung eingetragen');
   };
   overlay.classList.add('open');
@@ -1243,6 +1282,7 @@ function openWeanModal(sow){
     sow.matings = []; sow.pregCheckDate = null; sow.pregCheckResult = null;
     sow.farrowDate = null; sow.pigletsLive = null; sow.pigletsStillborn = null;
     sow.treatments = blankTreatments(); sow.weanDate = null; sow.pigletsWeaned = null;
+    sow.pg600Date = null;
 
     await persistSow(sow);
 
@@ -1278,6 +1318,7 @@ document.getElementById('list').addEventListener('click', async (e)=>{
       await deleteSowRemote(id); render(); showToast('Eintrag gelöscht');
     }
   } else if(act==='mating'){ openMatingModal(sow); }
+  else if(act==='pg600'){ openPG600Modal(sow); }
   else if(act==='pregcheck'){ openPregCheckModal(sow); }
   else if(act==='farrow'){ openFarrowModal(sow); }
   else if(act==='wean'){ openWeanModal(sow); }
@@ -1672,7 +1713,11 @@ function computeSowTasks(sow){
   const phase = getPhase(sow);
 
   if(phase === 'wartet_rausche'){
-    if(sow.history.length === 0){
+    if(sow.pg600Date){
+      const pgStart = addDays(sow.pg600Date, 1);
+      const pgEnd = addDays(sow.pg600Date, 2);
+      tasks.push({ date: pgStart, label: `Rausche nach PG 600 erwartet (Fenster bis ${fmt(pgEnd)})` });
+    } else if(sow.history.length === 0){
       if(sow.purchaseDate){
         const expHeat = addDays(sow.purchaseDate, FIRST_HEAT_AFTER_ARRIVAL);
         tasks.push({ date: expHeat, label: 'Erste Rausche / Deckung erwartet' });
