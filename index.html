@@ -3161,21 +3161,6 @@ function renderVerkaufView(){
     </table></div>
     <div class="stat-note" style="margin-top:8px;">Ø-Werte je Lieferung berechnet (nicht nach Stückzahl gewichtet).</div>
   `;
-
-  const updateTotal = () => {
-    let total = 0;
-    document.querySelectorAll('.vkn-alloc-row').forEach(row=>{
-      if(row.style.display === 'none') return;
-      const c = Number(row.querySelector('.vkn-alloc-count').value || 0);
-      total += c;
-    });
-    document.getElementById('vkn-total-hint').textContent = `Gesamt Stück: ${total}`;
-  };
-  document.querySelectorAll('.vkn-alloc-count').forEach(inp=> inp.addEventListener('input', updateTotal));
-  document.getElementById('vkn-add-alloc').addEventListener('click', ()=>{
-    const hidden = Array.from(document.querySelectorAll('.vkn-alloc-row')).find(r=>r.style.display==='none');
-    if(hidden) hidden.style.display = 'flex';
-  });
 }
 
 document.getElementById('vk-year').addEventListener('change', renderVerkaufView);
