@@ -1394,48 +1394,62 @@ let currentView = 'sows';
 document.getElementById('viewTabs').addEventListener('click', (e)=>{
   const btn = e.target.closest('.viewtab');
   if(!btn) return;
-  document.querySelectorAll('.viewtab').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  currentView = btn.dataset.view;
-  const showSows = currentView === 'sows';
-  const showFerkel = currentView === 'ferkel';
-  const showMast = currentView === 'mast';
-  const showTierliste = currentView === 'tierliste';
-  const showVerkauf = currentView === 'verkauf';
-  const showStats = currentView === 'stats';
-  const showPlan = currentView === 'plan';
-  document.getElementById('filterRow').style.display = showSows ? 'flex' : 'none';
-  document.getElementById('sowViewToggle').style.display = showSows ? 'flex' : 'none';
-  document.getElementById('cardSortRow').style.display = showSows ? 'flex' : 'none';
-  document.getElementById('searchWrap').style.display = showSows ? 'block' : 'none';
-  document.getElementById('list').style.display = showSows ? 'block' : 'none';
-  document.getElementById('ferkelView').style.display = showFerkel ? 'block' : 'none';
-  document.getElementById('mastView').style.display = showMast ? 'block' : 'none';
-  document.getElementById('tierlisteView').style.display = showTierliste ? 'block' : 'none';
-  document.getElementById('verkaufView').style.display = showVerkauf ? 'block' : 'none';
-  document.getElementById('ferkelAddBar').style.display = showFerkel ? 'flex' : 'none';
-  document.getElementById('mastAddBar').style.display = showMast ? 'flex' : 'none';
-  if(!showFerkel) document.getElementById('ferkelAddPanel').classList.remove('open');
-  if(!showVerkauf) document.getElementById('verkaufAddPanel').classList.remove('open');
-  if(!showMast) document.getElementById('mastAddPanel').classList.remove('open');
-  document.getElementById('statsView').style.display = showStats ? 'block' : 'none';
-  document.getElementById('planView').style.display = showPlan ? 'block' : 'none';
-  if(!showSows) { panel.classList.remove('open'); document.getElementById('sowsTableView').style.display = 'none'; }
-  if(showPlan) initPlanRange();
-  if(showTierliste) initTierlisteYear();
-  if(showVerkauf) initVerkaufYear();
-  refreshCurrentView();
+  try{
+    document.querySelectorAll('.viewtab').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    currentView = btn.dataset.view;
+    const showSows = currentView === 'sows';
+    const showFerkel = currentView === 'ferkel';
+    const showMast = currentView === 'mast';
+    const showTierliste = currentView === 'tierliste';
+    const showVerkauf = currentView === 'verkauf';
+    const showStats = currentView === 'stats';
+    const showPlan = currentView === 'plan';
+    document.getElementById('filterRow').style.display = showSows ? 'flex' : 'none';
+    document.getElementById('sowViewToggle').style.display = showSows ? 'flex' : 'none';
+    document.getElementById('cardSortRow').style.display = showSows ? 'flex' : 'none';
+    document.getElementById('searchWrap').style.display = showSows ? 'block' : 'none';
+    document.getElementById('list').style.display = showSows ? 'block' : 'none';
+    document.getElementById('ferkelView').style.display = showFerkel ? 'block' : 'none';
+    document.getElementById('mastView').style.display = showMast ? 'block' : 'none';
+    document.getElementById('tierlisteView').style.display = showTierliste ? 'block' : 'none';
+    document.getElementById('verkaufView').style.display = showVerkauf ? 'block' : 'none';
+    document.getElementById('ferkelAddBar').style.display = showFerkel ? 'flex' : 'none';
+    document.getElementById('mastAddBar').style.display = showMast ? 'flex' : 'none';
+    if(!showFerkel) document.getElementById('ferkelAddPanel').classList.remove('open');
+    if(!showVerkauf) document.getElementById('verkaufAddPanel').classList.remove('open');
+    if(!showMast) document.getElementById('mastAddPanel').classList.remove('open');
+    document.getElementById('statsView').style.display = showStats ? 'block' : 'none';
+    document.getElementById('planView').style.display = showPlan ? 'block' : 'none';
+    if(!showSows) { panel.classList.remove('open'); document.getElementById('sowsTableView').style.display = 'none'; }
+    if(showPlan) initPlanRange();
+    if(showTierliste) initTierlisteYear();
+    if(showVerkauf) initVerkaufYear();
+    refreshCurrentView();
+  }catch(err){
+    console.error('Fehler beim Tab-Wechsel:', err);
+    const containerId = { sows:'list', ferkel:'ferkelView', mast:'mastView', tierliste:'tierlisteResults', verkauf:'verkaufResults', stats:'statsView', plan:'apResults' }[currentView];
+    const target = containerId && document.getElementById(containerId);
+    if(target) target.innerHTML = `<div class="empty"><div class="big">Fehler beim Anzeigen</div>${err.message || err}</div>`;
+  }
 });
 
 function refreshCurrentView(){
   if(!initialDataLoaded){ renderLoadingPlaceholder(); return; }
-  if(currentView === 'stats') renderStats();
-  else if(currentView === 'plan') renderArbeitsplan();
-  else if(currentView === 'tierliste') renderTierliste();
-  else if(currentView === 'verkauf') renderVerkaufView();
-  else if(currentView === 'ferkel') renderFerkelView();
-  else if(currentView === 'mast') renderMastView();
-  else render();
+  try{
+    if(currentView === 'stats') renderStats();
+    else if(currentView === 'plan') renderArbeitsplan();
+    else if(currentView === 'tierliste') renderTierliste();
+    else if(currentView === 'verkauf') renderVerkaufView();
+    else if(currentView === 'ferkel') renderFerkelView();
+    else if(currentView === 'mast') renderMastView();
+    else render();
+  }catch(err){
+    console.error('Fehler beim Anzeigen von', currentView, err);
+    const containerId = { sows:'list', ferkel:'ferkelView', mast:'mastView', tierliste:'tierlisteResults', verkauf:'verkaufResults', stats:'statsView', plan:'apResults' }[currentView];
+    const target = containerId && document.getElementById(containerId);
+    if(target) target.innerHTML = `<div class="empty"><div class="big">Fehler beim Anzeigen</div>${err.message || err}</div>`;
+  }
 }
 
 function renderLoadingPlaceholder(){
