@@ -1213,16 +1213,11 @@ function openEditSowModal(sow){
 }
 
 function openWeanModal(sow){
-  const stall1Pens = ferkelPensStatus().filter(p=>String(p.stall)==='1');
-  const penOptionsHtml = stall1Pens.map(p=>{
-    const label = p.occupant ? `Bucht ${p.bucht} – belegt (${p.sowNames}, ${p.remaining} Tiere)` : `Bucht ${p.bucht} – frei`;
-    return `<option value="${p.bucht}">${label}</option>`;
-  }).join('');
   modalBox.innerHTML = `
     <h3>Absetzen eintragen</h3>
     <div class="field"><label>Datum</label><input type="date" id="w-date" value="${today()}"></div>
     <div class="field"><label>Anzahl abgesetzter Ferkel</label><input type="number" min="0" id="w-count"></div>
-    <div class="field"><label>Bucht im Ferkelstall 1 auswählen</label><select id="w-pen">${penOptionsHtml}</select></div>
+    <div class="stat-note">Die Ferkel bleiben im Ferkel-Tab zunächst als „wartet auf Platz im Aufzuchtstall" (Abferkelstall) vermerkt. Sobald im Ferkelstall 1 eine Bucht frei ist, kannst du sie dort gezielt einstallen.</div>
     <div class="modal-btns">
       <button class="btn-primary" id="w-save">Speichern</button>
       <button class="btn-secondary" id="w-cancel">Abbrechen</button>
@@ -1251,25 +1246,19 @@ function openWeanModal(sow){
 
     await persistSow(sow);
 
-    // automatisch neue Ferkelgruppe im Ferkelstall anlegen
+    // Ferkel bleiben zunächst unzugewiesen (= im Abferkelstall), bis sie gezielt
+    // ins Ferkelstall 1 eingestallt werden (Button "Ins Ferkelstall 1 einstallen").
     if(count > 0){
-      const bucht = Number(document.getElementById('w-pen').value);
-      const pen = ferkelPensStatus().find(p=>String(p.stall)==='1' && p.bucht===bucht);
-      if(pen && pen.occupant){
-        if(!confirm(`Bucht ${bucht} in Ferkelstall 1 ist bereits belegt (${pen.sowNames}, ${pen.remaining} Tiere). Trotzdem verwenden?`)){
-          closeModal(); render(); return;
-        }
-      }
       const gruppe = {
         id: 'fg_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
-        sowName: sow.name, weanDate: date, initialCount: count, stall: '1', bucht,
+        sowName: sow.name, weanDate: date, initialCount: count, stall: null, bucht: null,
         losses: [], outflows: []
       };
       ferkelGruppen.push(gruppe);
       await persistFerkelGruppe(gruppe);
     }
 
-    closeModal(); render(); showToast('Abgesetzt – Ferkel in den Ferkelstall übernommen');
+    closeModal(); render(); showToast('Abgesetzt – Ferkel im Abferkelstall vermerkt');
   };
   overlay.classList.add('open');
 }
@@ -1833,19 +1822,30 @@ function ferkelGruppeStats(g){
 function ferkelstallStatus(){
   const stalls = ['1','2'];
   return stalls.map(s=>{
-    const groups = ferkelGruppen.filter(g => (g.stall||'1') === s && ferkelGruppeStats(g).remaining > 0);
+    const groups = ferkelGruppen.filter(g => g.stall!=null && String(g.stall) === s && ferkelGruppeStats(g).remaining > 0);
     const total = groups.reduce((a,g)=>a+ferkelGruppeStats(g).remaining, 0);
     return { stall:s, belegt: groups.length>0, total, groups };
   });
 }
 
+function abferkelstallWartendStatus(){
+  const groups = ferkelGruppen.filter(g => g.stall==null && ferkelGruppeStats(g).remaining > 0);
+  const total = groups.reduce((a,g)=>a+ferkelGruppeStats(g).remaining, 0);
+  return { belegt: groups.length>0, total, groups };
+}
+
 function renderFerkelView(){
   const el = document.getElementById('ferkelView');
   const stallStatus = ferkelstallStatus();
+  const wartend = abferkelstallWartendStatus();
   const stallHtml = `
     <div class="stat-section">
       <h3>Ferkelstall-Übersicht</h3>
       <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-value">${wartend.belegt ? wartend.total : '–'}</div>
+          <div class="stat-label">Abferkelstall – wartet auf Platz im Aufzuchtstall</div>
+        </div>
         ${stallStatus.map(s=>`
           <div class="stat-card">
             <div class="stat-value">${s.belegt ? s.total : '–'}</div>
@@ -1880,11 +1880,15 @@ function renderFerkelView(){
     el.innerHTML = stallHtml + belegplanHtml + `<div class="empty"><div class="big">Keine aktiven Ferkelgruppen</div>Sobald Ferkel abgesetzt oder eingetragen werden, erscheinen sie hier.</div>`;
     return;
   }
-  const sorted = visible.slice().sort((a,b)=> b.weanDate.localeCompare(a.weanDate));
+  const sorted = visible.slice().sort((a,b)=>{
+    if((a.stall==null) !== (b.stall==null)) return a.stall==null ? -1 : 1;
+    return b.weanDate.localeCompare(a.weanDate);
+  });
   const cardsHtml = sorted.map(g=>{
     const st = ferkelGruppeStats(g);
-    const cls = st.verschnitt ? 'due-soon' : '';
-    const penLabel = `Stall ${g.stall||'1'}${g.bucht!=null ? ' · Bucht '+g.bucht : ' · Bucht nicht zugewiesen'}`;
+    const wartet = g.stall==null;
+    const cls = wartet ? 'due-soon' : (st.verschnitt ? 'due-soon' : '');
+    const penLabel = wartet ? 'Abferkelstall · wartet auf Platz im Aufzuchtstall' : `Stall ${g.stall}${g.bucht!=null ? ' · Bucht '+g.bucht : ' · Bucht nicht zugewiesen'}`;
     return `<div class="card ${cls}">
       <div class="card-top">
         <div class="card-name-wrap"><span class="card-name">Sau ${g.sowName}</span><span class="cycle-tag">${penLabel} · ${st.remaining} / ${g.initialCount}</span></div>
@@ -1897,6 +1901,7 @@ function renderFerkelView(){
         Aktueller Bestand: <b>${st.remaining}</b>
       </div>
       <div class="card-actions">
+        ${wartet ? `<button data-act="fEinstallen" data-id="${g.id}">Ins Ferkelstall 1 einstallen</button>` : ''}
         <button data-act="fLoss" data-id="${g.id}">Verlust eintragen</button>
         <button data-act="fOut" data-id="${g.id}">Verkauf / Umstallung eintragen</button>
         <button data-act="fEdit" data-id="${g.id}" class="ghost">Bearbeiten</button>
@@ -1999,6 +2004,34 @@ function openFerkelOutflowModal(g){
   overlay.classList.add('open');
 }
 
+function openFerkelEinstallenModal(g){
+  const stall1Pens = ferkelPensStatus().filter(p=>String(p.stall)==='1');
+  const penOptionsHtml = stall1Pens.map(p=>{
+    const label = p.occupant ? `Bucht ${p.bucht} – belegt (${p.sowNames}, ${p.remaining} Tiere)` : `Bucht ${p.bucht} – frei`;
+    return `<option value="${p.bucht}">${label}</option>`;
+  }).join('');
+  modalBox.innerHTML = `
+    <h3>Ins Ferkelstall 1 einstallen</h3>
+    <div class="field"><label>Bucht auswählen</label><select id="fi-pen">${penOptionsHtml}</select></div>
+    <div class="modal-btns">
+      <button class="btn-primary" id="fi-save">Einstallen</button>
+      <button class="btn-secondary" id="fi-cancel">Abbrechen</button>
+    </div>
+  `;
+  document.getElementById('fi-cancel').onclick = closeModal;
+  document.getElementById('fi-save').onclick = async ()=>{
+    const bucht = Number(document.getElementById('fi-pen').value);
+    const pen = ferkelPensStatus().find(p=>String(p.stall)==='1' && p.bucht===bucht);
+    if(pen && pen.occupant){
+      if(!confirm(`Bucht ${bucht} in Ferkelstall 1 ist bereits belegt (${pen.sowNames}, ${pen.remaining} Tiere). Trotzdem verwenden?`)) return;
+    }
+    g.stall = '1'; g.bucht = bucht;
+    await persistFerkelGruppe(g);
+    closeModal(); renderFerkelView(); showToast('Gruppe ins Ferkelstall 1 umgestallt');
+  };
+  overlay.classList.add('open');
+}
+
 function openFerkelEditModal(g){
   const currentStall = g.stall!=null ? String(g.stall) : '1';
   const currentBucht = g.bucht!=null ? Number(g.bucht) : null;
@@ -2068,6 +2101,7 @@ document.getElementById('ferkelView').addEventListener('click', async (e)=>{
   if(act==='fLoss'){ openFerkelLossModal(g); }
   else if(act==='fOut'){ openFerkelOutflowModal(g); }
   else if(act==='fEdit'){ openFerkelEditModal(g); }
+  else if(act==='fEinstallen'){ openFerkelEinstallenModal(g); }
   else if(act==='fDel'){
     if(confirm(`Ferkelgruppe von Sau ${g.sowName} wirklich löschen?`)){
       ferkelGruppen = ferkelGruppen.filter(x=>x.id!==id);
