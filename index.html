@@ -185,8 +185,7 @@
 
   <div class="filterrow" id="filterRow">
     <button class="chip active" data-filter="all">Alle</button>
-    <button class="chip" data-filter="wartet_rausche">Wartet auf Rausche</button>
-    <button class="chip" data-filter="im_deckzentrum">Deckzentrum</button>
+    <button class="chip" data-filter="rausche_deck">Wartet auf Rausche / Deckzentrum</button>
     <button class="chip" data-filter="traechtig">Tragend</button>
     <button class="chip" data-filter="saugend">Säugend</button>
   </div>
@@ -679,7 +678,12 @@ let cardSortDir = 'asc';
 function render(){
   const list = document.getElementById('list');
   const tableEl = document.getElementById('sowsTableView');
-  let filtered = sows.filter(s => !s.abgang && (currentFilter==='all' || getPhase(s)===currentFilter));
+  let filtered = sows.filter(s => {
+    if(s.abgang) return false;
+    if(currentFilter==='all') return true;
+    if(currentFilter==='rausche_deck') return getPhase(s)==='wartet_rausche' || getPhase(s)==='im_deckzentrum';
+    return getPhase(s)===currentFilter;
+  });
   if(searchTerm){
     const term = searchTerm.toLowerCase();
     filtered = filtered.filter(s => s.name.toLowerCase().includes(term));
