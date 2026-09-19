@@ -158,6 +158,24 @@
 </head>
 <body>
 
+<div id="jsErrorBanner" style="display:none; position:fixed; top:0; left:0; right:0; z-index:99999; background:#b91c1c; color:#fff; padding:12px 16px; font-family:monospace; font-size:13px; white-space:pre-wrap; box-shadow:0 2px 8px rgba(0,0,0,0.3);"></div>
+<script>
+  window.addEventListener('error', function(e){
+    var b = document.getElementById('jsErrorBanner');
+    if(!b) return;
+    b.style.display = 'block';
+    b.textContent = 'JS-FEHLER (bitte Screenshot an Claude schicken): ' + e.message +
+      '  |  Datei: ' + (e.filename ? e.filename.split('/').pop() : '?') +
+      '  |  Zeile: ' + (e.lineno || '?') + ', Spalte: ' + (e.colno || '?');
+  });
+  window.addEventListener('unhandledrejection', function(e){
+    var b = document.getElementById('jsErrorBanner');
+    if(!b) return;
+    b.style.display = 'block';
+    b.textContent = 'JS-FEHLER (Promise, bitte Screenshot an Claude schicken): ' + (e.reason && e.reason.message ? e.reason.message : e.reason);
+  });
+</script>
+
 <header>
   <h1>Sauenplaner</h1>
   <p class="sub">Zukauf, Deckung, Trächtigkeit, Abferkelung &amp; Absetzen im Blick</p>
