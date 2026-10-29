@@ -209,7 +209,7 @@
 
   <div class="viewtabs" id="viewTabs">
     <button class="viewtab active" data-view="sows">Sauen</button>
-    <button class="viewtab" data-view="belegplan">Planung</button>
+    <button class="viewtab" data-view="belegplan">Abferkelplan</button>
     <button class="viewtab" data-view="stats">Auswertung</button>
     <button class="viewtab" data-view="plan">Arbeitsplan</button>
   </div>
@@ -1993,49 +1993,7 @@ function abferkelPlanHtml(){
 
 function renderBelegplan(){
   const el = document.getElementById('belegplanView');
-  const f1Pens = ferkelPensStatus().filter(p=>p.stall===1);
-  const f2Pens = ferkelPensStatus().filter(p=>p.stall===2);
-  const wartend = abferkelstallWartendStatus();
-  const mPens = pensStatus();
-
-  function penBoxHtml(p, idLabel){
-    const occ = p.occupant;
-    return `<div class="pen-box ${occ?'occ':'free'}">
-      <div class="pen-id">${idLabel}</div>
-      ${occ
-        ? `<div><div class="pen-count">${p.remaining}</div><div class="pen-info">${p.sowNames}</div></div>`
-        : `<div class="pen-info">frei</div>`}
-    </div>`;
-  }
-
-  function sectionHtml(title, pensArr, idFn){
-    const belegt = pensArr.filter(p=>p.occupant).length;
-    const tiere = pensArr.reduce((a,p)=>a+p.remaining,0);
-    return `
-    <div class="stat-section">
-      <h3>${title} <span style="font-weight:400;color:var(--ink-soft);font-size:0.8rem;">(${belegt} / ${pensArr.length} Buchten belegt · ${tiere} Tiere)</span></h3>
-      <div class="pen-grid">${pensArr.map(p=>penBoxHtml(p, idFn(p))).join('')}</div>
-    </div>`;
-  }
-
-  let html = abferkelPlanHtml();
-
-  html += `<div class="pen-legend">
-    <span><i class="free"></i> frei</span>
-    <span><i class="occ"></i> belegt</span>
-    <span><i class="wait"></i> wartet auf Platz</span>
-  </div>`;
-
-  html += sectionHtml('Ferkelstall 1 (Aufzucht)', f1Pens, p=>`Bucht ${p.bucht}`);
-
-  if(wartend.belegt){
-    html += `<div class="pen-waitbox"><b>${wartend.total} Ferkel</b> warten im Abferkelstall auf einen freien Platz im Aufzuchtstall (${wartend.groups.length} Gruppe${wartend.groups.length===1?'':'n'}).</div>`;
-  }
-
-  html += sectionHtml('Ferkelstall 2 (Vormast)', f2Pens, p=>`Bucht ${p.bucht}`);
-  html += sectionHtml('Mast', mPens, p=>`V${p.ventil} ${p.bucht}`);
-
-  el.innerHTML = html;
+  el.innerHTML = abferkelPlanHtml();
 }
 
 function renderFerkelView(){
