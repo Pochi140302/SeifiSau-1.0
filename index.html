@@ -174,6 +174,27 @@
   .pen-waitbox{ border-radius:10px; padding:10px 12px; background:var(--card); border:1.5px dashed var(--amber);
     font-size:0.8rem; color:var(--ink-soft); margin-top:10px; }
   .pen-waitbox b{ color:var(--ink); }
+
+  /* Drucken */
+  @media print{
+    @page{ size:A4 landscape; margin:12mm; }
+    body{ background:#fff !important; padding:0 !important; }
+    header{ position:static !important; box-shadow:none !important; border-bottom:2px solid #000; padding:0 0 8px; }
+    main{ max-width:100% !important; padding:0 !important; }
+    .addbar, .viewtabs, #filterRow, #sowViewToggle, #cardSortRow, #searchWrap,
+    #ferkelAddBar, #mastAddBar, .panel, #jsErrorBanner, .toast, .modal-overlay,
+    #statsSubTabs, button{ display:none !important; }
+    .stats-table-wrap{ overflow:visible !important; border:1px solid #000 !important; }
+    .stats-table{ width:100% !important; font-size:10px; }
+    .stats-table th, .stats-table td{ border-color:#999 !important; padding:4px 6px !important; }
+    table{ page-break-inside:auto; }
+    tr{ page-break-inside:avoid; }
+    .card{ border:1px solid #999 !important; break-inside:avoid; background:#fff !important; }
+    .stat-card{ border:1px solid #999 !important; background:#fff !important; }
+    .pen-box.occ{ background:#eee !important; border-color:#999 !important; }
+    .pen-box.occ .pen-id, .pen-box.occ .pen-info{ color:#000 !important; }
+    .pen-waitbox{ border-color:#999 !important; }
+  }
 </style>
 </head>
 <body>
@@ -205,6 +226,7 @@
   <div class="addbar">
     <button class="addbtn" id="toggleAdd">+ Sau eintragen</button>
     <button class="btn-secondary" id="refreshBtn" style="flex:none;">⟳</button>
+    <button class="btn-secondary" id="printBtn" style="flex:none;" title="Aktuelle Ansicht drucken">🖨️</button>
   </div>
 
   <div class="viewtabs" id="viewTabs">
@@ -1416,6 +1438,10 @@ document.getElementById('sowsTableView').addEventListener('click', (e)=>{
 document.getElementById('refreshBtn').addEventListener('click', async ()=>{
   await loadAll();
   showToast('Aktualisiert');
+});
+
+document.getElementById('printBtn').addEventListener('click', ()=>{
+  window.print();
 });
 
 document.getElementById('searchBox').addEventListener('input', (e)=>{
