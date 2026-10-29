@@ -1512,7 +1512,7 @@ function computeStats(sowsData){
   const allFarrowDates = [];
 
   sowsData.forEach(s=>{
-    phaseCounts[getPhase(s)]++;
+    if(!s.abgang) phaseCounts[getPhase(s)]++;
     totalFailedMatings += (s.failedMatings || 0);
 
     // Sequenz aus abgeschlossenen Zyklen + laufender Belegung (auch ohne Geburt), sortiert nach Belegdatum
@@ -1570,7 +1570,7 @@ function computeStats(sowsData){
   }
 
   return {
-    total: sowsData.length,
+    total: sowsData.filter(s=>!s.abgang).length,
     phaseCounts,
     avgLittersPerSow: avg(sowLitterCounts),
     totalLitters: birthRecords.length,
