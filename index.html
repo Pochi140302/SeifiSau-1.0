@@ -154,6 +154,26 @@
   @media(min-width:600px){ .modal-overlay{ align-items:center; } .modal-box{ border-radius:16px; } }
   .modal-box h3{ font-family:'Source Serif 4', serif; font-size:1.1rem; margin:0 0 14px; }
   .modal-btns{ display:flex; gap:8px; margin-top:16px; }
+
+  /* Visueller Belegplan */
+  .pen-legend{ display:flex; gap:14px; flex-wrap:wrap; font-size:0.76rem; color:var(--ink-soft); margin-bottom:12px; }
+  .pen-legend span{ display:inline-flex; align-items:center; gap:5px; }
+  .pen-legend i{ width:11px; height:11px; border-radius:3px; display:inline-block; }
+  .pen-legend i.free{ background:var(--card); border:1.5px solid var(--moss); }
+  .pen-legend i.occ{ background:var(--moss); }
+  .pen-legend i.wait{ background:var(--amber); }
+  .pen-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(78px,1fr)); gap:8px; }
+  .pen-box{ position:relative; border-radius:10px; padding:9px 8px; min-height:68px; cursor:default;
+    border:1.5px solid var(--line); background:var(--card); display:flex; flex-direction:column; justify-content:space-between; }
+  .pen-box.free{ border-color:var(--moss); background:var(--card); }
+  .pen-box.occ{ background:var(--moss); border-color:var(--moss-dark); }
+  .pen-box.occ .pen-id, .pen-box.occ .pen-info{ color:#fff; }
+  .pen-box .pen-id{ font-size:0.72rem; font-weight:700; color:var(--ink-soft); }
+  .pen-box .pen-info{ font-size:0.68rem; color:var(--ink-soft); line-height:1.25; margin-top:4px; }
+  .pen-box .pen-count{ font-family:'Source Serif 4', serif; font-weight:700; font-size:1.05rem; margin-top:2px; }
+  .pen-waitbox{ border-radius:10px; padding:10px 12px; background:var(--card); border:1.5px dashed var(--amber);
+    font-size:0.8rem; color:var(--ink-soft); margin-top:10px; }
+  .pen-waitbox b{ color:var(--ink); }
 </style>
 </head>
 <body>
@@ -189,6 +209,7 @@
 
   <div class="viewtabs" id="viewTabs">
     <button class="viewtab active" data-view="sows">Sauen</button>
+    <button class="viewtab" data-view="belegplan">Planung</button>
     <button class="viewtab" data-view="stats">Auswertung</button>
     <button class="viewtab" data-view="plan">Arbeitsplan</button>
   </div>
@@ -239,6 +260,7 @@
 
   <div id="list"></div>
   <div id="sowsTableView" style="display:none;"></div>
+  <div id="belegplanView" style="display:none;"></div>
   <div id="statsView" style="display:none;"></div>
 
   <div class="addbar" id="ferkelAddBar" style="display:none;">
@@ -1416,6 +1438,7 @@ document.getElementById('viewTabs').addEventListener('click', (e)=>{
     const showMast = currentView === 'mast';
     const showTierliste = currentView === 'tierliste';
     const showVerkauf = currentView === 'verkauf';
+    const showBelegplan = currentView === 'belegplan';
     const showStats = currentView === 'stats';
     const showPlan = currentView === 'plan';
     document.getElementById('filterRow').style.display = showSows ? 'flex' : 'none';
@@ -1431,6 +1454,7 @@ document.getElementById('viewTabs').addEventListener('click', (e)=>{
     document.getElementById('mastAddBar').style.display = showMast ? 'flex' : 'none';
     if(!showFerkel) document.getElementById('ferkelAddPanel').classList.remove('open');
     if(!showMast) document.getElementById('mastAddPanel').classList.remove('open');
+    document.getElementById('belegplanView').style.display = showBelegplan ? 'block' : 'none';
     document.getElementById('statsView').style.display = showStats ? 'block' : 'none';
     document.getElementById('planView').style.display = showPlan ? 'block' : 'none';
     if(!showSows) { panel.classList.remove('open'); document.getElementById('sowsTableView').style.display = 'none'; }
@@ -1440,7 +1464,7 @@ document.getElementById('viewTabs').addEventListener('click', (e)=>{
     refreshCurrentView();
   }catch(err){
     console.error('Fehler beim Tab-Wechsel:', err);
-    const containerId = { sows:'list', ferkel:'ferkelView', mast:'mastView', tierliste:'tierlisteResults', verkauf:'verkaufResults', stats:'statsView', plan:'apResults' }[currentView];
+    const containerId = { sows:'list', ferkel:'ferkelView', mast:'mastView', tierliste:'tierlisteResults', verkauf:'verkaufResults', belegplan:'belegplanView', stats:'statsView', plan:'apResults' }[currentView];
     const target = containerId && document.getElementById(containerId);
     if(target) target.innerHTML = `<div class="empty"><div class="big">Fehler beim Anzeigen</div>${err.message || err}</div>`;
   }
@@ -1455,10 +1479,11 @@ function refreshCurrentView(){
     else if(currentView === 'verkauf') renderVerkaufView();
     else if(currentView === 'ferkel') renderFerkelView();
     else if(currentView === 'mast') renderMastView();
+    else if(currentView === 'belegplan') renderBelegplan();
     else render();
   }catch(err){
     console.error('Fehler beim Anzeigen von', currentView, err);
-    const containerId = { sows:'list', ferkel:'ferkelView', mast:'mastView', tierliste:'tierlisteResults', verkauf:'verkaufResults', stats:'statsView', plan:'apResults' }[currentView];
+    const containerId = { sows:'list', ferkel:'ferkelView', mast:'mastView', tierliste:'tierlisteResults', verkauf:'verkaufResults', belegplan:'belegplanView', stats:'statsView', plan:'apResults' }[currentView];
     const target = containerId && document.getElementById(containerId);
     if(target) target.innerHTML = `<div class="empty"><div class="big">Fehler beim Anzeigen</div>${err.message || err}</div>`;
   }
@@ -1469,6 +1494,7 @@ function renderLoadingPlaceholder(){
   const containerId = {
     sows: 'list', ferkel: 'ferkelView', mast: 'mastView',
     tierliste: 'tierlisteResults', verkauf: 'verkaufResults',
+    belegplan: 'belegplanView',
     stats: 'statsView', plan: 'apResults'
   }[currentView];
   if(containerId) document.getElementById(containerId).innerHTML = loadingHtml;
@@ -1903,6 +1929,113 @@ function abferkelstallWartendStatus(){
   const groups = ferkelGruppen.filter(g => g.stall==null && ferkelGruppeStats(g).remaining > 0);
   const total = groups.reduce((a,g)=>a+ferkelGruppeStats(g).remaining, 0);
   return { belegt: groups.length>0, total, groups };
+}
+
+function getISOWeek(dateStr){
+  const d = new Date(dateStr+'T00:00:00');
+  d.setDate(d.getDate() + 4 - (d.getDay()||7));
+  const yearStart = new Date(d.getFullYear(),0,1);
+  return Math.ceil((((d-yearStart)/86400000)+1)/7);
+}
+function getWeekStart(dateStr){
+  const d = new Date(dateStr+'T00:00:00');
+  const day = d.getDay()||7; // Mo=1..So=7
+  d.setDate(d.getDate()-day+1);
+  return d.toISOString().slice(0,10);
+}
+
+const ABFERKEL_GRUPPE_GROESSE = 7; // 1 Abteil im Abferkelstall (7 von 14 Buchten)
+
+function computeAbferkelGruppen(){
+  const pregnant = sows.filter(s=>!s.abgang && getPhase(s)==='traechtig');
+  const withDue = pregnant.map(s=>{
+    const fmd = firstMatingDate(s);
+    const due = fmd ? addDays(fmd, GESTATION_DAYS) : null;
+    return { sow:s, due };
+  }).filter(x=>x.due);
+
+  const groupsMap = {};
+  withDue.forEach(x=>{
+    const wk = getWeekStart(x.due);
+    (groupsMap[wk] = groupsMap[wk] || []).push(x);
+  });
+
+  return Object.keys(groupsMap).sort().map(wk=>{
+    const items = groupsMap[wk].sort((a,b)=>a.due.localeCompare(b.due));
+    return {
+      weekStart: wk, weekEnd: addDays(wk,6), isoWeek: getISOWeek(wk),
+      items, target: ABFERKEL_GRUPPE_GROESSE,
+      missing: Math.max(0, ABFERKEL_GRUPPE_GROESSE - items.length)
+    };
+  });
+}
+
+function abferkelPlanHtml(){
+  const groups = computeAbferkelGruppen();
+  if(!groups.length){
+    return `<div class="stat-section"><h3>Abferkelplan</h3><div class="empty"><div class="big">Keine trächtigen Sauen</div>Sobald Sauen als trächtig bestätigt sind, erscheint hier der Abferkelplan.</div></div>`;
+  }
+  return `<div class="stat-section">
+    <h3>Abferkelplan <span style="font-weight:400;color:var(--ink-soft);font-size:0.8rem;">(Gruppengröße ${ABFERKEL_GRUPPE_GROESSE} je Abteil)</span></h3>
+    ${groups.map(g=>`
+      <div class="pen-waitbox" style="border-style:solid; border-color:${g.missing>0?'var(--amber)':'var(--moss)'}; margin-bottom:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:6px;">
+          <b>KW ${g.isoWeek} · ${fmt(g.weekStart)} – ${fmt(g.weekEnd)}</b>
+          <span>${g.items.length} / ${g.target} Sauen${g.missing>0 ? ` · <b style="color:var(--alert);">${g.missing} fehlen</b>` : ''}</span>
+        </div>
+        <div style="font-size:0.8rem; line-height:1.6;">
+          ${g.items.map(it=>`${it.sow.name} – ${fmt(it.due)}`).join('<br>')}
+        </div>
+      </div>
+    `).join('')}
+  </div>`;
+}
+
+function renderBelegplan(){
+  const el = document.getElementById('belegplanView');
+  const f1Pens = ferkelPensStatus().filter(p=>p.stall===1);
+  const f2Pens = ferkelPensStatus().filter(p=>p.stall===2);
+  const wartend = abferkelstallWartendStatus();
+  const mPens = pensStatus();
+
+  function penBoxHtml(p, idLabel){
+    const occ = p.occupant;
+    return `<div class="pen-box ${occ?'occ':'free'}">
+      <div class="pen-id">${idLabel}</div>
+      ${occ
+        ? `<div><div class="pen-count">${p.remaining}</div><div class="pen-info">${p.sowNames}</div></div>`
+        : `<div class="pen-info">frei</div>`}
+    </div>`;
+  }
+
+  function sectionHtml(title, pensArr, idFn){
+    const belegt = pensArr.filter(p=>p.occupant).length;
+    const tiere = pensArr.reduce((a,p)=>a+p.remaining,0);
+    return `
+    <div class="stat-section">
+      <h3>${title} <span style="font-weight:400;color:var(--ink-soft);font-size:0.8rem;">(${belegt} / ${pensArr.length} Buchten belegt · ${tiere} Tiere)</span></h3>
+      <div class="pen-grid">${pensArr.map(p=>penBoxHtml(p, idFn(p))).join('')}</div>
+    </div>`;
+  }
+
+  let html = abferkelPlanHtml();
+
+  html += `<div class="pen-legend">
+    <span><i class="free"></i> frei</span>
+    <span><i class="occ"></i> belegt</span>
+    <span><i class="wait"></i> wartet auf Platz</span>
+  </div>`;
+
+  html += sectionHtml('Ferkelstall 1 (Aufzucht)', f1Pens, p=>`Bucht ${p.bucht}`);
+
+  if(wartend.belegt){
+    html += `<div class="pen-waitbox"><b>${wartend.total} Ferkel</b> warten im Abferkelstall auf einen freien Platz im Aufzuchtstall (${wartend.groups.length} Gruppe${wartend.groups.length===1?'':'n'}).</div>`;
+  }
+
+  html += sectionHtml('Ferkelstall 2 (Vormast)', f2Pens, p=>`Bucht ${p.bucht}`);
+  html += sectionHtml('Mast', mPens, p=>`V${p.ventil} ${p.bucht}`);
+
+  el.innerHTML = html;
 }
 
 function renderFerkelView(){
